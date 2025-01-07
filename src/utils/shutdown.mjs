@@ -41,7 +41,7 @@ async function executeHandler(name, handler, timeout) {
  * @param {number} options.timeout - Shutdown timeout in milliseconds
  * @returns {object} Shutdown handler interface
  */
-export function createGracefulShutdown({ timeout = 10000 } = {}) {
+export function createGracefulShutdown({ timeout = 10_000 } = {}) {
   const state = {
     handlers: new Map(),
     isShuttingDown: false,

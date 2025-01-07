@@ -4,6 +4,10 @@
  * @module services/metrics/handler
  */
 
+/**
+ * @typedef {import('@types/docker.mjs').ParsedStats} ParsedStats
+ */
+
 import log from 'loglevel';
 import { InfluxDB } from 'influx';
 import { createMetricsBatcher } from '../../utils/batch.mjs';
@@ -16,7 +20,7 @@ import { transformStats, validatePoints } from './transformer.mjs';
  * @param {object} config.influx - InfluxDB configuration
  * @param {string} config.influx.host - InfluxDB host
  * @param {number} config.influx.port - InfluxDB port
- * @param {string} config.influx.protocol - InfluxDB protocol
+ * @param {('http'|'https')} config.influx.protocol - InfluxDB protocol
  * @param {string} config.influx.username - InfluxDB username
  * @param {string} config.influx.password - InfluxDB password
  * @param {string} config.influx.database - InfluxDB database
@@ -29,7 +33,7 @@ export function createMetricsHandler(config) {
     new InfluxDB({
       host: config.influx.host,
       port: config.influx.port,
-      protocol: config.influx.protocol,
+      protocol: /** @type {('http'|'https')} */ (config.influx.protocol),
       username: config.influx.username,
       password: config.influx.password,
       database: config.influx.database
@@ -67,20 +71,20 @@ export function createMetricsHandler(config) {
    * Handles parsed Docker stats and queues them for writing to InfluxDB
    * @param {string} containerId - Container ID
    * @param {string} containerName - Container name
-   * @param {import('../../types/docker.mjs').ParsedStats} stats - Parsed Docker stats
+   * @param {ParsedStats} parsedStats - Parsed Docker stats
    * @returns {Promise<void>}
    */
-  async function handleStats(containerId, containerName, stats) {
-    const points = transformStats(containerId, containerName, stats);
+  async function handleStats(containerId, containerName, parsedStats) {
+    const points = transformStats(containerId, containerName, parsedStats);
 
     if (!validatePoints(points)) {
-      throw new Error('Invalid points generated from stats');
+      throw new Error('Invalid points generated from parsedStats');
     }
 
     try {
       metricsBatcher.add(points);
       log.debug(
-        `container=${containerId} name=${containerName} queued stats at ${stats.timestamp.toISOString()}`
+        `container=${containerId} name=${containerName} queued stats at ${parsedStats.timestamp.toISOString()}`
       );
     } catch (err) {
       log.warn(`Failed to queue stats for container=${containerId}:`, err.message);

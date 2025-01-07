@@ -39,9 +39,11 @@ const shutdown = createGracefulShutdown({ timeout: config.shutdownTimeoutMs });
     await metricsHandler.initDatabase(config.influx.database);
 
     // Initialize container watcher
-    const containerWatcher = createContainerWatcher(async (containerId, containerName, stats) => {
-      await metricsHandler.handleStats(containerId, containerName, stats);
-    });
+    const containerWatcher = createContainerWatcher(
+      async (containerId, containerName, parsedStats) => {
+        await metricsHandler.handleStats(containerId, containerName, parsedStats);
+      }
+    );
 
     // Initialize events manager
     const eventsManager = createDockerEventsManager({

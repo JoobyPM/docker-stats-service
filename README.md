@@ -10,14 +10,14 @@ The project emerged from a specific need: performing isolated performance testin
 
 - Difficulty in getting precise CPU usage metrics for single containers with resource limits
 - Sampling intervals averaging 2–5 seconds, which didn't correlate well with `docker stats` output
-- Need for more granular, real-time metrics (~1 s sampling) during load testing
+- Need for more granular, near real-time metrics during load testing
 
 This service fills that gap by providing:
 
-- High-precision resource utilization metrics
-- Direct correlation with `docker stats` output
+- High-precision resource utilization metrics via Docker's native streaming API
+- Continuous, real-time metrics collection without polling delays
 - Simplified setup for development environments
-- Focus on single-container detailed metrics
+- Efficient multi-container monitoring
 
 Perfect for:
 
@@ -25,6 +25,30 @@ Perfect for:
 - Development environment monitoring
 - Quick resource utilization analysis
 - Scenarios require high-frequency sampling
+- Real-time resource utilization analysis
+- Scenarios requiring continuous monitoring
+
+Key Advantages:
+
+1. **Continuous Streaming**
+
+   - Uses Docker's native stats streaming API
+   - No artificial polling intervals or delays
+   - Processes metrics as they become available
+   - Direct correlation with Docker's internal stats
+
+2. **Real-Time Processing**
+
+   - Immediate metric processing as events arrive
+   - No aggregation or sampling delays
+   - Native backpressure handling
+   - Efficient stream management
+
+3. **Resource Efficiency**
+   - Optimized for development environments
+   - Minimal overhead compared to polling
+   - Efficient batching for storage
+   - Automatic scaling with container count
 
 ## Quick Start
 
@@ -43,61 +67,64 @@ open http://localhost:3009
 
 ## Features
 
-- Real-time container metrics collection
-- Automatic container discovery and monitoring
-- Pre-configured Grafana dashboards (auto-provisioned from `docker/ grafana_config/dashboards/`)
-- Event-based container monitoring
-- Efficient InfluxDB storage
+- Real-time container metrics streaming
+- Automatic discovery and monitoring of all containers
+- Pre-configured Grafana dashboards (auto-provisioned from `docker/grafana_config/dashboards/`)
+- Event-based container monitoring with automatic recovery
+- Efficient InfluxDB storage with batching
 - Configurable logging levels
 - Support for both local and Docker environments
+- Stream-based metrics collection with backpressure handling
 
 ## Prerequisites
 
 - Docker 20.10.0 or higher
 - Docker Compose v2.0.0 or higher
-- Node.js 18+ (for local development)
+- Node.js 21+ (for local development)
 - pnpm 8.0.0 or higher
 - 256MB+ available memory
 - Available ports: 3009 (Grafana), 8086 (InfluxDB)
 
-## Metrics Collected
+## Runtime Environments
 
-### System Metrics
+The service supports both local and Docker environments through the `DOCKER` environment variable:
 
-- CPU Usage
-  - Overall CPU percentage utilization
-- Memory Usage
-  - Used memory (bytes)
-  - Total memory limit
-- Network Statistics
-  - Bytes received (RX)
-  - Bytes transmitted (TX)
+### Local Environment (`DOCKER=false`)
 
-### Container Events
+- Default InfluxDB host: `localhost`
+- Docker socket path: `/var/run/docker.sock`
+- Direct access to host network
 
-- Container start events
-- Container stop events
-- Container kill events
+### Docker Environment (`DOCKER=true`)
+
+- Default InfluxDB host: `host.docker.internal` (macOS/Windows) or `172.17.0.1` (Linux)
+- Docker socket mounted as volume
+- Container network configuration required
+
+Note: On Linux hosts, you may need to use the Docker bridge network IP (`172.17.0.1`) or your host's actual IP instead of `host.docker.internal`.
 
 ## Environment Variables
 
-| Variable                   | Description                                 | Default        | Required |
-| -------------------------- | ------------------------------------------- | -------------- | -------- |
-| `DOCKER`                   | Running in Docker environment               | `false`        | No       |
-| `LOG_LEVEL`                | Logging verbosity (debug,info,warn,error)   | `info`         | No       |
-| `INFLUXDB_HOST`            | InfluxDB host                               | `localhost`    | Yes      |
-| `INFLUXDB_PORT`            | InfluxDB port                               | `8086`         | No       |
-| `INFLUXDB_PROTOCOL`        | InfluxDB protocol                           | `http`         | No       |
-| `INFLUXDB_USER`            | InfluxDB username                           | `admin`        | No       |
-| `INFLUXDB_PASS`            | InfluxDB password                           | `admin`        | No       |
-| `INFLUXDB_DB`              | InfluxDB database name                      | `docker-stats` | No       |
-| `STATS_INTERVAL_MS`        | Stats collection interval in ms             | `1000`         | No       |
-| `INFLUXDB_RETRY_MAX`       | Maximum number of retry attempts            | `5`            | No       |
-| `INFLUXDB_RETRY_DELAY`     | Initial retry delay in milliseconds         | `1000`         | No       |
-| `INFLUXDB_RETRY_MAX_DELAY` | Maximum retry delay in milliseconds         | `10000`        | No       |
-| `SHUTDOWN_TIMEOUT_MS`      | Maximum time to wait for graceful shutdown  | `10000`        | No       |
-| `BATCH_SIZE`               | Maximum number of points in a metrics batch | `100`          | No       |
-| `BATCH_WAIT_MS`            | Maximum time to wait before flushing batch  | `2000`         | No       |
+| Variable                   | Description                                 | Default                | Required | Notes                                                                      |
+| -------------------------- | ------------------------------------------- | ---------------------- | -------- | -------------------------------------------------------------------------- |
+| `DOCKER`                   | Running in Docker environment               | `false`                | No       | Affects default InfluxDB host                                              |
+| `LOG_LEVEL`                | Logging verbosity (debug,info,warn,error)   | `info`                 | No       |                                                                            |
+| `INFLUXDB_HOST`            | InfluxDB host                               | See notes              | No       | Defaults to `host.docker.internal` if `DOCKER=true`, otherwise `localhost` |
+| `INFLUXDB_PORT`            | InfluxDB port                               | `8086`                 | No       |                                                                            |
+| `INFLUXDB_PROTOCOL`        | InfluxDB protocol                           | `http`                 | No       |                                                                            |
+| `INFLUXDB_USER`            | InfluxDB username                           | `admin`                | No       |
+| `INFLUXDB_PASS`            | InfluxDB password                           | `admin`                | No       |
+| `INFLUXDB_DB`              | InfluxDB database name                      | `docker-stats`         | No       |
+| `INFLUXDB_RETRY_MAX`       | Maximum number of retry attempts            | `5`                    | No       |
+| `INFLUXDB_RETRY_DELAY`     | Initial retry delay in milliseconds         | `1000`                 | No       |
+| `INFLUXDB_RETRY_MAX_DELAY` | Maximum retry delay in milliseconds         | `10000`                | No       |
+| `SHUTDOWN_TIMEOUT_MS`      | Maximum time to wait for graceful shutdown  | `10000`                | No       |
+| `BATCH_SIZE`               | Maximum number of points in a metrics batch | `100`                  | No       |
+| `BATCH_WAIT_MS`            | Maximum time to wait before flushing batch  | `2000`                 | No       |
+| `DOCKER_SOCKET_PATH`       | Path to Docker socket                       | `/var/run/docker.sock` | No       |
+| `STATS_BUFFER_SIZE`        | Size of stats stream buffer in bytes        | `1048576`              | No       |
+| `STATS_LINE_SIZE`          | Maximum size of a single stats line         | `102400`               | No       |
+| `STATS_PARSE_TIMEOUT`      | Timeout for parsing stats in milliseconds   | `30000`                | No       |
 
 ### Metrics Batching
 
@@ -327,7 +354,6 @@ pnpm docker:stop
 2. **High CPU Usage**
 
    - Reduce logging level: `LOG_LEVEL=warn`
-   - Increase stats interval: `STATS_INTERVAL_MS=5000`
    - Check container count: `docker ps | wc -l`
    - Monitor InfluxDB write performance
 
@@ -366,7 +392,188 @@ LOG_LEVEL=debug pnpm start
 - Update documentation
 - Follow semantic versioning
 - Add meaningful commit messages
-- Follow negative space programming concept, you can read why [Exploring the Power of Negative Space Programming](https://double-trouble.dev/post/negativ-space-programming/)
+- Write clear JSDoc comments
+- Consider edge cases and error handling
+
+### Code Organization
+
+The codebase follows a clear directory structure:
+
+1. **`src/services/`** - Core service implementations
+
+   - `docker/` - Docker-related functionality
+     - `events.mjs` - Container lifecycle event handling
+     - `containers.mjs` - Container management and discovery
+     - `stream-manager.mjs` - Stats stream handling
+     - `stats-parser.mjs` - Raw stats processing
+     - `validation.mjs` - Docker-specific validation
+   - `metrics/` - Metrics processing and storage
+     - `handler.mjs` - Metrics collection and batching
+     - `transformer.mjs` - Metrics transformation logic
+
+2. **`src/types/`** - Shared type definitions
+
+   - `docker.mjs` - Docker-related type definitions
+   - `config.mjs` - Configuration type definitions
+
+3. **`src/utils/`** - Shared utilities
+
+   - `batch.mjs` - Batching utilities
+   - `common.mjs` - Common helper functions
+   - `influx.mjs` - InfluxDB client utilities
+   - `shutdown.mjs` - Graceful shutdown handling
+
+4. **`src/config/`** - Configuration management
+   - `config.mjs` - Application configuration
+
+When contributing:
+
+- Keep Docker-specific logic in `services/docker/`
+- Place metrics handling code in `services/metrics/`
+- Add shared types to `types/` directory
+- Use utility functions from `utils/` where possible
+- Follow existing module boundaries
+- Document new types using JSDoc
+
+## Modular Architecture
+
+The codebase is organized into focused, maintainable modules that separate concerns by responsibility.
+This modular approach replaces the original monolithic design,
+making the codebase more maintainable and easier to understand.
+
+### Core Services
+
+1. **Docker Service** (`services/docker/`)
+   - **Event Monitor** (`events.mjs`)
+     - Listens to Docker container lifecycle events
+     - Forwards events to Container Watcher
+     - Provides event logging and error handling
+   - **Container Manager** (`containers.mjs`)
+     - Handles container discovery and metadata
+     - Maintains container state
+     - Manages container lifecycle
+     - Coordinates with Stream Manager
+   - **Stream Manager** (`stream-manager.mjs`)
+     - Manages Docker stats streams
+     - Implements stream pooling and cleanup
+     - Handles backpressure and reconnection
+     - Ensures proper stream lifecycle
+   - **Stats Parser** (`stats-parser.mjs`)
+     - Processes raw Docker stats
+     - Handles data normalization
+     - Validates stats format
+   - **Validation** (`validation.mjs`)
+     - Validates container operations
+     - Ensures data integrity
+     - Checks stats format
+
+### Shared Components
+
+1. **Types** (`types/`)
+
+   - Centralized type definitions
+   - Shared interfaces
+   - Configuration types
+
+2. **Utilities** (`utils/`)
+   - Batching utilities
+   - Common helpers
+   - InfluxDB client
+   - Shutdown management
+
+### Benefits of Current Architecture
+
+1. **Clear Separation of Concerns**
+
+   - Docker events isolated from state management
+   - Stream handling separated from stats processing
+   - Clear interfaces between components
+   - Easy to locate specific functionality
+
+2. **Improved Maintainability**
+
+   - Modules can be modified independently
+   - Reduced coupling between components
+   - Easier to understand and debug
+   - Better code organization
+
+3. **Better Testing Strategy**
+
+   - Modules can be tested in isolation
+   - Clear boundaries for integration tests
+   - Easier to mock dependencies
+   - Better test coverage
+
+4. **Resource Management**
+   - Efficient stream-based collection
+   - Native Docker stats streaming
+   - Proper stream cleanup
+   - Memory leak prevention
+
+### Development Guidelines
+
+- Follow ESLint configuration
+- Add tests for new features
+- Update documentation
+- Follow semantic versioning
+- Add meaningful commit messages
+- Write clear JSDoc comments
+- Consider edge cases and error handling
+
+### Runtime Environments
+
+The service supports both local and Docker environments through the `DOCKER` environment variable:
+
+### Local Environment (`DOCKER=false`)
+
+- Default InfluxDB host: `localhost`
+- Docker socket path: `/var/run/docker.sock`
+- Direct access to host network
+
+### Docker Environment (`DOCKER=true`)
+
+- Default InfluxDB host: `host.docker.internal` (macOS/Windows) or `172.17.0.1` (Linux)
+- Docker socket mounted as volume
+- Container network configuration required
+
+Note: On Linux hosts, you may need to use the Docker bridge network IP (`172.17.0.1`) or your host's actual IP instead of `host.docker.internal`.
+
+### Metrics Collection
+
+The service uses Docker's streaming stats API to collect metrics in real-time:
+
+1. **Container Discovery**
+
+   - Automatically discovers running containers
+   - Monitors new container starts
+   - Handles container stops and removals
+
+2. **Continuous Streaming**
+
+   - Uses Docker's native stats streaming API
+   - One stream per monitored container
+   - Automatic stream recovery on errors
+   - Built-in backpressure handling
+
+3. **Stream Management**
+
+   - Maintains stream lifecycle
+   - Handles connection errors
+   - Manages concurrent streams
+   - Ensures proper cleanup
+
+4. **Data Processing**
+   - Validates raw stats format
+   - Transforms metrics for storage
+   - Implements efficient batching
+   - Handles write retries
+
+This approach provides:
+
+- Real-time metrics via native streaming
+- Efficient resource usage
+- Reliable data collection
+- Clean stream management
 
 ## Architecture
 
@@ -384,7 +591,7 @@ The system consists of three main parts:
 
 ### Component Architecture
 
-[Component Architecture](docs/architecture/components.puml)
+[Component Architecture](docs/architecture/diagrams/components.puml)
 
 Key components:
 
@@ -397,12 +604,12 @@ Key components:
 
 ### Metrics Collection Flow
 
-[Metrics Flow](docs/architecture/metrics_flow.puml)
+[Metrics Flow](docs/architecture/diagrams/metrics_flow.puml)
 
 The metrics collection process:
 
 1. Container start triggers stats collection
-2. Metrics are collected at configured intervals
+2. Docker stats stream is opened for continuous collection
 3. Points are batched for efficient writing
 4. Batches are written with retry support
 5. Container stop ends collection
@@ -519,3 +726,40 @@ When modifying the codebase:
 2. Update type definitions if interfaces change
 3. Ensure `jsdoc.config.json` references remain valid if files are moved
 4. Run `pnpm run jsdoc` to verify documentation builds correctly
+
+## Metrics Collection
+
+The service uses Docker's streaming stats API to collect metrics in real-time:
+
+1. **Container Discovery**
+
+   - Automatically discovers all running containers
+   - Monitors new containers as they start
+   - Cleans up monitoring when containers stop
+
+2. **Continuous Streaming**
+
+   - Opens persistent stats stream per container
+   - Processes stats events as they arrive
+   - Implements backpressure handling
+   - Provides automatic stream recovery
+
+3. **Stream Management**
+
+   - Maintains stream lifecycle
+   - Handles stream errors and reconnection
+   - Manages concurrent container streams
+   - Ensures proper stream cleanup
+
+4. **Efficient Processing**
+   - Batches metrics for optimal storage
+   - Validates and transforms raw stats
+   - Processes stats in real-time
+   - Scales with container count
+
+This approach provides:
+
+- Native Docker stats streaming
+- Minimal collection latency
+- Better resource utilization
+- Automatic scaling with container count

@@ -5,10 +5,16 @@
  */
 
 /**
+ * @typedef {import('@types/docker.mjs').ParsedStats} ParsedStats
+ */
+
+import log from 'loglevel';
+
+/**
  * Transforms parsed Docker stats into InfluxDB data points
  * @param {string} containerId - Container ID
  * @param {string} containerName - Container name
- * @param {import('../../types/docker.mjs').ParsedStats} stats - Parsed Docker stats
+ * @param {ParsedStats} stats - Parsed Docker stats
  * @returns {Array<{
  *   measurement: string,
  *   tags: { [key: string]: string },
@@ -37,6 +43,65 @@ export function transformStats(containerId, containerName, stats) {
 }
 
 /**
+ * Validates that a value is a non-null object
+ * @param {unknown} value - Value to validate
+ * @returns {boolean} Whether the value is a non-null object
+ */
+function isNonNullObject(value) {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Validates the basic structure of a data point
+ * @param {unknown} point - Point to validate
+ * @returns {boolean} Whether the point has a valid basic structure
+ */
+function hasValidPointStructure(point) {
+  // First ensure point is a valid object
+  if (!isNonNullObject(point)) {
+    log.debug('Invalid point: not a non-null object');
+    return false;
+  }
+
+  // Check each required property
+  const validations = [
+    {
+      check: () => typeof point.measurement === 'string',
+      field: 'measurement',
+      expected: 'string'
+    },
+    { check: () => isNonNullObject(point.tags), field: 'tags', expected: 'non-null object' },
+    { check: () => isNonNullObject(point.fields), field: 'fields', expected: 'non-null object' },
+    { check: () => point.timestamp instanceof Date, field: 'timestamp', expected: 'Date' }
+  ];
+
+  for (const { check, field, expected } of validations) {
+    if (!check()) {
+      log.debug(`Invalid point: ${field} is not a ${expected}`);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Validates that all required fields are present and are numbers
+ * @param {object} fields - Fields to validate
+ * @param {string[]} requiredFields - List of required field names
+ * @returns {boolean} Whether all required fields are valid numbers
+ */
+function hasValidFields(fields, requiredFields) {
+  for (const field of requiredFields) {
+    if (typeof fields[field] !== 'number') {
+      log.debug(`Invalid fields: ${field} is not a number`);
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Validates transformed data points
  * @param {Array<{
  *   measurement: string,
@@ -47,39 +112,29 @@ export function transformStats(containerId, containerName, stats) {
  * @returns {boolean} Whether the points are valid
  */
 export function validatePoints(points) {
-  if (!Array.isArray(points) || points.length === 0) {
+  if (!Array.isArray(points)) {
+    log.debug('Invalid points: not an array');
     return false;
   }
 
-  return points.every(point => {
-    // Check required fields
-    if (!point.measurement || typeof point.measurement !== 'string') {
+  if (points.length === 0) {
+    log.debug('Invalid points: empty array');
+    return false;
+  }
+
+  const requiredFields = ['cpu_percent', 'mem_used', 'mem_total', 'net_in_bytes', 'net_out_bytes'];
+
+  return points.every((point, index) => {
+    if (!hasValidPointStructure(point)) {
+      log.debug(`Invalid point at index ${index}`);
       return false;
     }
 
-    // Check tags
-    if (!point.tags || typeof point.tags !== 'object') {
+    if (!hasValidFields(point.fields, requiredFields)) {
+      log.debug(`Invalid fields at index ${index}`);
       return false;
     }
 
-    // Check fields
-    if (!point.fields || typeof point.fields !== 'object') {
-      return false;
-    }
-
-    // Check timestamp
-    if (!(point.timestamp instanceof Date)) {
-      return false;
-    }
-
-    // Validate specific fields we expect
-    const requiredFields = [
-      'cpu_percent',
-      'mem_used',
-      'mem_total',
-      'net_in_bytes',
-      'net_out_bytes'
-    ];
-    return requiredFields.every(field => typeof point.fields[field] === 'number');
+    return true;
   });
 }

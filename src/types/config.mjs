@@ -86,13 +86,5 @@
  * };
  */
 
-export const ConfigTypes = {
-  /** @type {DockerConfig} */
-  DockerConfig: null,
-  /** @type {InfluxConfig} */
-  InfluxConfig: null,
-  /** @type {BatchConfig} */
-  BatchConfig: null,
-  /** @type {Config} */
-  Config: null
-};
+// Export the type definitions for use in other modules
+export const config = null; // Placeholder to enable type imports

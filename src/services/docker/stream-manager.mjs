@@ -4,35 +4,41 @@
  * @module services/docker/stream-manager
  */
 
+/**
+ * @typedef {import('@types/docker.mjs').StreamInfo} StreamInfo
+ * @typedef {import('@types/docker.mjs').StreamState} StreamState
+ * @typedef {import('@types/docker.mjs').ParsedStats} ParsedStats
+ */
+
 import log from 'loglevel';
-import { processBuffer, parseLine } from './stats-parser.mjs';
-import { DockerTypes } from '../../types/docker.mjs';
+import { processBuffer } from './stats-parser.mjs';
+import { parseLine } from './validation.mjs';
 
 /**
  * Creates a stream manager for handling container stats streams
  * @param {object} params - Parameters
- * @param {function(string, string, DockerTypes.ParsedStats): Promise<void>} params.onStats - Stats callback
+ * @param {function(string, string, ParsedStats): Promise<void>} params.onStats - Stats callback
  * @param {function(string): void} params.onStreamEnd - Called when a stream ends
  * @returns {object} Stream manager functions
  */
 export function createStreamManager({ onStats, onStreamEnd }) {
-  /** @type {Map<string, DockerTypes.StreamInfo>} */
+  /** @type {Map<string, StreamInfo>} */
   const streams = new Map();
-  const MAX_CONSECUTIVE_ERRORS = 3;
+  const maxConsecutiveErrors = 3;
 
   /**
    * Gets the current state of a stream
    * @param {string} containerId - Container ID
-   * @returns {DockerTypes.StreamState | 'unknown'} Stream state
+   * @returns { StreamState} Stream state
    */
   function getStreamState(containerId) {
-    return streams.get(containerId)?.state || 'unknown';
+    return streams.get(containerId)?.state || /** @type { StreamState} */ ('unknown');
   }
 
   /**
    * Checks if a stream exists and is in a specific state
    * @param {string} containerId - Container ID
-   * @param {DockerTypes.StreamState} state - Expected state
+   * @param { StreamState} state - Expected state
    * @returns {boolean} Whether the stream exists and is in the expected state
    */
   function isStreamInState(containerId, state) {
@@ -42,7 +48,7 @@ export function createStreamManager({ onStats, onStreamEnd }) {
   /**
    * Safely transitions a stream to a new state
    * @param {string} containerId - Container ID
-   * @param {DockerTypes.StreamState} newState - New state
+   * @param { StreamState} newState - New state
    * @returns {boolean} Whether the transition was successful
    */
   function transitionStreamState(containerId, newState) {
@@ -50,12 +56,13 @@ export function createStreamManager({ onStats, onStreamEnd }) {
     if (!streamInfo) return false;
 
     // Validate state transitions
-    const validTransitions = {
+    const validTransitions = /** @type {Record< StreamState,  StreamState[]>} */ ({
+      unknown: ['starting'],
       starting: ['active', 'stopped'],
       active: ['stopping', 'stopped'],
       stopping: ['stopped'],
       stopped: []
-    };
+    });
 
     if (!validTransitions[streamInfo.state]?.includes(newState)) {
       log.warn(
@@ -82,12 +89,15 @@ export function createStreamManager({ onStats, onStreamEnd }) {
       return false;
     }
 
-    streams.set(containerId, {
+    /** @type {StreamInfo} */
+    const streamInfo = {
       stream,
       buffer: '',
       consecutiveErrors: 0,
-      state: 'starting'
-    });
+      state: /** @type {StreamState} */ ('starting')
+    };
+
+    streams.set(containerId, streamInfo);
 
     // Set up stream event handlers
     stream.on('data', chunk => {
@@ -113,7 +123,7 @@ export function createStreamManager({ onStats, onStreamEnd }) {
         }
 
         // Check for too many errors
-        if (streamInfo.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        if (streamInfo.consecutiveErrors >= maxConsecutiveErrors) {
           log.error(
             `Too many consecutive errors for container=${containerId}, marking stream for removal`
           );
@@ -185,8 +195,6 @@ export function createStreamManager({ onStats, onStreamEnd }) {
   return {
     addStream,
     removeStream,
-    removeAllStreams,
-    getStreamState,
-    isStreamInState
+    removeAllStreams
   };
 }

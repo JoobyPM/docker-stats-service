@@ -7,12 +7,14 @@
 import assert from 'node:assert';
 import log from 'loglevel';
 
+const LOG_LEVEL_MAP = ['trace', 'debug', 'info', 'warn', 'error', 'silent'];
+
 // Environment variable defaults and parsing
 const {
   DOCKER = 'false',
   LOG_LEVEL = 'info',
   INFLUXDB_HOST,
-  INFLUXDB_PORT = 8086,
+  INFLUXDB_PORT = '8086',
   INFLUXDB_PROTOCOL = 'http',
   INFLUXDB_USER = 'admin',
   INFLUXDB_PASS = 'admin',
@@ -43,7 +45,7 @@ const {
  * @typedef {object} InfluxConfig
  * @property {string} host - InfluxDB host
  * @property {number} port - InfluxDB port
- * @property {string} protocol - InfluxDB protocol (http/https)
+ * @property {('http'|'https')} protocol - InfluxDB protocol
  * @property {string} username - InfluxDB username
  * @property {string} password - InfluxDB password
  * @property {string} database - InfluxDB database name
@@ -77,11 +79,9 @@ const {
  */
 function initConfig() {
   // Validate log level
+  /** @type {"trace" | "debug" | "info" | "warn" | "error" | "silent"} */
   const logLevel = LOG_LEVEL.toLowerCase();
-  assert(
-    ['trace', 'debug', 'info', 'warn', 'error', 'silent'].includes(logLevel),
-    'Invalid log level'
-  );
+  assert(LOG_LEVEL_MAP.includes(logLevel), 'Invalid log level');
 
   // Setup loglevel
   log.setLevel(logLevel);
@@ -92,6 +92,10 @@ function initConfig() {
 
   // Use env-provided INFLUXDB_HOST or fallback
   const influxHost = INFLUXDB_HOST || localHost;
+
+  // Parse numeric values
+  const influxPort = parseInt(INFLUXDB_PORT, 10);
+  assert(!Number.isNaN(influxPort), 'Invalid INFLUXDB_PORT value');
 
   return {
     isDocker,
@@ -107,8 +111,8 @@ function initConfig() {
     },
     influx: {
       host: influxHost,
-      port: parseInt(INFLUXDB_PORT, 10),
-      protocol: INFLUXDB_PROTOCOL,
+      port: influxPort,
+      protocol: /** @type {('http'|'https')} */ (INFLUXDB_PROTOCOL),
       username: INFLUXDB_USER,
       password: INFLUXDB_PASS,
       database: INFLUXDB_DB,

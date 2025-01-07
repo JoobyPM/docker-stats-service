@@ -7,7 +7,6 @@
 import log from 'loglevel';
 import Docker from 'dockerode';
 import { config } from '../../config/config.mjs';
-import { DockerTypes } from '../../types/docker.mjs';
 
 /**
  * Creates a Docker events manager
@@ -18,7 +17,7 @@ import { DockerTypes } from '../../types/docker.mjs';
  */
 export function createDockerEventsManager(callbacks) {
   const docker = new Docker({ socketPath: config.docker.socketPath });
-  let eventsStream = null;
+  let dockerEventStream = null;
 
   /**
    * Validates Docker socket access and permissions
@@ -43,7 +42,7 @@ export function createDockerEventsManager(callbacks) {
         testStream.on('end', resolve);
         // Ensure we don't hang
         setTimeout(() => {
-          testStream?.destroy();
+          // noinspection JSUnresolvedReference
           resolve();
         }, 1000);
       });
@@ -74,7 +73,7 @@ export function createDockerEventsManager(callbacks) {
    * @returns {Promise<Array<{id: string, name: string}>>} List of running containers
    */
   async function listContainers() {
-    /** @type {DockerTypes.ContainerInfo[]} */
+    /** @type {import('dockerode').ContainerInfo[]} */
     const containers = await docker.listContainers();
     return containers.map(info => ({
       id: info.Id,
@@ -91,7 +90,7 @@ export function createDockerEventsManager(callbacks) {
   async function getContainerInfo(containerId) {
     try {
       const container = docker.getContainer(containerId);
-      /** @type {DockerTypes.ContainerInfo} */
+      /** @type {import('dockerode').ContainerInspectInfo} */
       const info = await container.inspect();
 
       if (!info || !info.Name) {
@@ -115,20 +114,19 @@ export function createDockerEventsManager(callbacks) {
    * @returns {Promise<void>}
    */
   async function startMonitoring() {
-    if (eventsStream) {
+    if (dockerEventStream) {
       log.warn('Events stream already exists, stopping existing stream first');
       await stopMonitoring();
     }
 
-    eventsStream = await docker.getEvents({
+    dockerEventStream = await docker.getEvents({
       filters: JSON.stringify({
         type: ['container']
       })
     });
 
-    eventsStream.on('data', async chunk => {
+    dockerEventStream.on('data', async chunk => {
       try {
-        /** @type {DockerTypes.DockerEvent} */
         const event = JSON.parse(chunk.toString());
         const { status, id } = event;
         if (!status || !id) return;
@@ -156,13 +154,13 @@ export function createDockerEventsManager(callbacks) {
       }
     });
 
-    eventsStream.on('error', err => {
+    dockerEventStream.on('error', err => {
       log.error('Docker events stream error:', err);
     });
 
-    eventsStream.on('end', () => {
+    dockerEventStream.on('end', () => {
       log.info('Docker events stream ended');
-      eventsStream = null;
+      dockerEventStream = null;
     });
 
     log.info('Docker events monitoring started');
@@ -173,17 +171,16 @@ export function createDockerEventsManager(callbacks) {
    * @returns {Promise<void>}
    */
   async function stopMonitoring() {
-    if (eventsStream) {
+    if (dockerEventStream) {
       log.info('Stopping Docker events monitoring...');
-      eventsStream.destroy();
-      eventsStream = null;
+      dockerEventStream.destroy();
+      dockerEventStream = null;
     }
   }
 
   return {
     validateAccess,
     listContainers,
-    getContainerInfo,
     startMonitoring,
     stopMonitoring
   };

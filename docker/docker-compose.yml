@@ -63,8 +63,6 @@ services:
       - INFLUXDB_DB=docker-stats
       - INFLUXDB_USER=admin
       - INFLUXDB_PASS=admin
-      # How frequently to collect stats (example: 1 second)
-      - STATS_INTERVAL_MS=1000
       # Retry mechanism configuration
       - INFLUXDB_RETRY_MAX=5
       - INFLUXDB_RETRY_DELAY=1000

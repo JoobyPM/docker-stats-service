@@ -4,27 +4,31 @@
  * @module services/docker/containers
  */
 
+/**
+ * @typedef {import('@types/docker.mjs').ParsedStats} ParsedStats
+ */
+
 import log from 'loglevel';
 import Docker from 'dockerode';
 import { config } from '../../config/config.mjs';
 import { createStreamManager } from './stream-manager.mjs';
-import { DockerTypes } from '../../types/docker.mjs';
+import { Readable } from 'stream';
 
 /**
  * Creates a container watcher instance
- * @param {function(string, string, DockerTypes.ParsedStats): Promise<void>} onStats - Stats callback
+ * @param {function(string, string, ParsedStats): Promise<void>} onStats - Stats callback
  * @returns {object} Container watcher functions and state management
  */
 export function createContainerWatcher(onStats) {
   const docker = new Docker({ socketPath: config.docker.socketPath });
-  let isShuttingDown = false;
+  let containerWatcherShutdown = false;
 
   // Create stream manager
   const streamManager = createStreamManager({
     onStats,
     onStreamEnd: containerId => {
       log.debug(`Stream ended for container=${containerId}, checking container status`);
-      checkContainerStatus(containerId);
+      checkContainerStatus(containerId).then(null);
     }
   });
 
@@ -34,7 +38,7 @@ export function createContainerWatcher(onStats) {
    * @param {string} containerId - Container ID
    */
   async function checkContainerStatus(containerId) {
-    if (isShuttingDown) return;
+    if (containerWatcherShutdown) return;
 
     try {
       const container = docker.getContainer(containerId);
@@ -72,14 +76,14 @@ export function createContainerWatcher(onStats) {
    * @returns {Promise<void>}
    */
   async function watchContainer(containerId, containerName) {
-    if (isShuttingDown) {
+    if (containerWatcherShutdown) {
       log.info(`Skipping container watch during shutdown: ${containerId}`);
       return;
     }
 
     try {
       const container = docker.getContainer(containerId);
-      const statsStream = await container.stats({ stream: true });
+      const statsStream = /** @type {Readable} */ (await container.stats({ stream: true }));
 
       if (!streamManager.addStream(containerId, containerName, statsStream)) {
         // If stream wasn't added (e.g., already exists), clean up the new stream
@@ -97,7 +101,6 @@ export function createContainerWatcher(onStats) {
    * @returns {Promise<void>}
    */
   async function watchRunningContainers() {
-    /** @type {DockerTypes.ContainerInfo[]} */
     const containers = await docker.listContainers();
     for (const info of containers) {
       if (!info.Id) {
@@ -114,7 +117,7 @@ export function createContainerWatcher(onStats) {
    * @returns {Promise<void>}
    */
   async function shutdown() {
-    isShuttingDown = true;
+    containerWatcherShutdown = true;
     await streamManager.removeAllStreams();
   }
 

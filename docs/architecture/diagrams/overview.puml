@@ -9,7 +9,13 @@ title Docker Stats Service - Architecture Overview
 Person(user, "Developer", "A developer running performance tests")
 
 System_Boundary(docker_host, "Docker Host") {
-    Container(docker_stats_service, "Docker Stats Service", "Node.js", "Collects and processes container metrics")
+    Container_Boundary(docker_stats_service, "Docker Stats Service", "Node.js") {
+        Container(event_monitor, "Event Monitor", "events.mjs", "Monitors container lifecycle")
+        Container(container_watcher, "Container Watcher", "containers.mjs", "Orchestrates monitoring")
+        Container(stream_manager, "Stream Manager", "stream-manager.mjs", "Manages stats streams")
+        Container(metrics_handler, "Metrics Handler", "metrics/", "Processes & batches metrics")
+    }
+    
     Container(docker_daemon, "Docker Daemon", "Docker Engine", "Manages containers and provides stats")
     
     Boundary(monitored_containers, "Monitored Containers") {
@@ -23,11 +29,22 @@ System_Boundary(storage_visualization, "Storage & Visualization") {
     Container(grafana, "Grafana", "Visualization", "Displays metrics dashboards")
 }
 
+' User interactions
 Rel(user, grafana, "Views metrics", "HTTP/3000")
-Rel(docker_stats_service, docker_daemon, "Collects stats", "Unix Socket")
+
+' Docker Stats Service interactions
+Rel(event_monitor, docker_daemon, "Monitors events", "Unix Socket")
+Rel(event_monitor, container_watcher, "Triggers monitoring")
+Rel(container_watcher, stream_manager, "Manages streams")
+Rel(stream_manager, docker_daemon, "Collects stats", "Unix Socket")
+Rel(stream_manager, metrics_handler, "Sends stats")
+Rel(metrics_handler, influxdb, "Writes metrics", "HTTP/8086")
+
+' Docker Daemon interactions
 Rel(docker_daemon, container1, "Manages", "Container Runtime")
 Rel(docker_daemon, container2, "Manages", "Container Runtime")
-Rel(docker_stats_service, influxdb, "Writes metrics", "HTTP/8086")
+
+' Visualization interactions
 Rel(grafana, influxdb, "Reads metrics", "HTTP/8086")
 
 @enduml 

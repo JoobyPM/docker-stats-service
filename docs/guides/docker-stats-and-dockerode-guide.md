@@ -33,6 +33,105 @@ For more details, see **[Docker Docs - Resource Constraints](https://docs.docker
 
 ---
 
+## 1.5. Container Watcher & Stream Manager Flow
+
+The service uses a robust stream management system to handle real-time container stats collection. This system is split into two main components:
+
+### Container Watcher (`containers.mjs`)
+
+The Container Watcher orchestrates the monitoring of Docker containers:
+
+- Discovers and tracks container lifecycle
+- Manages stats stream creation and cleanup
+- Handles container state changes
+- Provides automatic recovery on failures
+
+```js
+// Container Watcher simplified flow
+const watcher = createContainerWatcher(async (containerId, name, stats) => {
+  // Process and store the stats
+  await processContainerStats(containerId, name, stats);
+});
+
+// Start watching a container
+await watcher.watchContainer(containerId, containerName);
+
+// Stop watching (e.g., on container stop)
+await watcher.unwatchContainer(containerId);
+```
+
+### Stream Manager (`stream-manager.mjs`)
+
+The Stream Manager handles the low-level details of Docker stats streams:
+
+- Maintains stream state and lifecycle
+- Handles stream errors and retries
+- Prevents duplicate streams
+- Implements backpressure handling
+
+```js
+// Stream Manager state machine
+const streamStates = {
+  STARTING: 'starting', // Stream creation initiated
+  ACTIVE: 'active', // Stream is receiving stats
+  STOPPING: 'stopping', // Stream cleanup initiated
+  STOPPED: 'stopped' // Stream fully cleaned up
+};
+
+// Simplified stream lifecycle
+const stream = await streamManager.addStream(containerId, containerName);
+stream
+  .on('data', chunk => {
+    // Parse and validate stats
+    const stats = parseStats(chunk);
+    // Notify listeners
+    onStats(containerId, containerName, stats);
+  })
+  .on('error', error => {
+    // Handle errors, maybe retry
+    streamManager.handleStreamError(containerId, error);
+  })
+  .on('end', () => {
+    // Clean up
+    streamManager.removeStream(containerId);
+  });
+```
+
+### Key Features
+
+1. **Concurrency Control**
+
+   - Single source of truth for stream state
+   - Atomic state transitions
+   - Prevention of duplicate streams
+   - Safe cleanup on container removal
+
+2. **Error Handling**
+
+   - Automatic retry on transient failures
+   - Error count tracking per stream
+   - Graceful degradation
+   - Stream reset on consecutive errors
+
+3. **Resource Management**
+
+   - Proper stream cleanup
+   - Memory leak prevention
+   - Backpressure handling
+   - Efficient stream pooling
+
+4. **State Machine**
+   ```
+   [Container Start] → STARTING → ACTIVE → STOPPING → STOPPED
+          ↑              ↓         ↓
+          └──────────────┴─────────┘
+           (Auto-retry on error)
+   ```
+
+This architecture ensures reliable stats collection while handling the complexities of container lifecycle events and potential failures gracefully.
+
+---
+
 ## 2. Retrieving Stats with Dockerode
 
 Dockerode uses Docker’s **Remote API**. Below is a minimal Node.js snippet:
