@@ -45,7 +45,7 @@ open http://localhost:3009
 
 - Real-time container metrics collection
 - Automatic container discovery and monitoring
-- Pre-configured Grafana dashboards (auto-provisioned from `docker/config/dashboards/`)
+- Pre-configured Grafana dashboards (auto-provisioned from `docker/ grafana_config/dashboards/`)
 - Event-based container monitoring
 - Efficient InfluxDB storage
 - Configurable logging levels
@@ -251,12 +251,12 @@ timestamp: measurement timestamp
 The service comes with pre-configured Grafana dashboards that are automatically provisioned during startup. The dashboards are stored in:
 
 ```
-docker/config/dashboards/
+docker/ grafana_config/dashboards/
 ```
 
 To customize or add new dashboards:
 
-1. Add your JSON dashboard files to the `docker/config/dashboards/` directory
+1. Add your JSON dashboard files to the `docker/ grafana_config/dashboards/` directory
 2. Restart the Grafana container: `pnpm docker:restart grafana`
 
 The default dashboard provides:
