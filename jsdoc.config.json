@@ -1,0 +1,28 @@
+{
+  "source": {
+    "include": ["src", "package.json", "README.md"],
+    "includePattern": ".mjs$",
+    "excludePattern": "(node_modules/|docs)"
+  },
+  "plugins": ["plugins/markdown"],
+  "opts": {
+    "encoding": "utf8",
+    "readme": "./README.md",
+    "destination": "docs/api",
+    "recurse": true,
+    "verbose": true,
+    "template": "./node_modules/clean-jsdoc-theme",
+    "theme_opts": {
+      "default_theme": "dark",
+      "includeFilesListInHomepage": true,
+      "base_url": "/index.html",
+      "title": "Docker Stats Service",
+      "homepageTitle": "Docker Stats Service",
+      "displayModuleHeader": true
+    }
+  },
+  "markdown": {
+    "hardwrap": false,
+    "idInHeadings": true
+  }
+}

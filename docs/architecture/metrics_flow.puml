@@ -1,0 +1,85 @@
+@startuml Docker Stats Service - Metrics Collection Flow
+
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+box "Docker Stats Service" #LightBlue
+participant "Event Monitor" as EventMonitor
+participant "Stats Collector" as StatsCollector
+participant "Metrics Batcher" as MetricsBatcher
+participant "Retry Handler" as RetryHandler
+end box
+
+box "External Systems" #LightGreen
+participant "Docker Daemon" as DockerDaemon
+participant "InfluxDB" as InfluxDB
+end box
+
+== Container Start ==
+DockerDaemon -> EventMonitor: Container Start Event
+activate EventMonitor
+EventMonitor -> StatsCollector: Start Collecting Stats
+deactivate EventMonitor
+
+== Metrics Collection ==
+loop Every STATS_INTERVAL_MS
+    StatsCollector -> DockerDaemon: Request Container Stats
+    activate DockerDaemon
+    DockerDaemon --> StatsCollector: Return Stats
+    deactivate DockerDaemon
+    
+    StatsCollector -> StatsCollector: Process Stats
+    activate StatsCollector
+    note right: Calculate CPU %\nFormat Memory\nAggregate Network
+    deactivate StatsCollector
+    
+    StatsCollector -> MetricsBatcher: Add Points
+    activate MetricsBatcher
+end
+
+== Batch Processing ==
+MetricsBatcher -> MetricsBatcher: Check Batch Criteria
+activate MetricsBatcher
+note right
+  Flush if:
+  - Batch size >= maxSize
+  - Time > maxWaitMs
+  - Shutdown triggered
+end note
+
+alt Batch Ready
+    MetricsBatcher -> RetryHandler: Write Batch
+    activate RetryHandler
+    
+    loop Until Success or Max Retries
+        RetryHandler -> InfluxDB: Write Points
+        activate InfluxDB
+        
+        alt Success
+            InfluxDB --> RetryHandler: Success
+            RetryHandler --> MetricsBatcher: Success
+        else Failure
+            InfluxDB --> RetryHandler: Error
+            RetryHandler -> RetryHandler: Calculate Backoff
+            note right: Exponential with Jitter
+        end
+        deactivate InfluxDB
+    end
+    deactivate RetryHandler
+end
+deactivate MetricsBatcher
+
+== Container Stop ==
+DockerDaemon -> EventMonitor: Container Stop Event
+activate EventMonitor
+EventMonitor -> StatsCollector: Stop Collecting Stats
+deactivate EventMonitor
+
+== Graceful Shutdown ==
+[-> MetricsBatcher: Shutdown Signal
+activate MetricsBatcher
+MetricsBatcher -> MetricsBatcher: Flush Remaining Points
+MetricsBatcher -> RetryHandler: Final Write
+deactivate MetricsBatcher
+
+@enduml 

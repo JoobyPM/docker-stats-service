@@ -1,0 +1,263 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "This dashboard works along with docker-stats-service, that uses Docker API and push measurement to InfluxDB 1.X",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 4,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influx-docker-stats"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/RAM.*$/"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "unit",
+                "value": "decmbytes"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 21,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": ["min", "max", "mean", "p95"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.4.0",
+      "targets": [
+        {
+          "alias": "CPU $tag_container_name",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-docker-stats"
+          },
+          "groupBy": [
+            {
+              "params": ["1s"],
+              "type": "time"
+            },
+            {
+              "params": ["container_name::tag"],
+              "type": "tag"
+            },
+            {
+              "params": ["none"],
+              "type": "fill"
+            }
+          ],
+          "measurement": "docker_stats",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": ["cpu_percent"],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "max"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "container_name::tag",
+              "operator": "=~",
+              "value": "/^$container_name$/"
+            }
+          ]
+        },
+        {
+          "alias": "RAM $tag_container_name",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-docker-stats"
+          },
+          "groupBy": [
+            {
+              "params": ["1s"],
+              "type": "time"
+            },
+            {
+              "params": ["container_name::tag"],
+              "type": "tag"
+            },
+            {
+              "params": ["none"],
+              "type": "fill"
+            }
+          ],
+          "hide": false,
+          "measurement": "docker_stats",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "B",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": ["mem_used"],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "max"
+              },
+              {
+                "params": [" /(1024*1024)"],
+                "type": "math"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "container_name::tag",
+              "operator": "=~",
+              "value": "/^$container_name$/"
+            }
+          ]
+        }
+      ],
+      "title": "CPU & RAM per container",
+      "type": "timeseries"
+    }
+  ],
+  "preload": false,
+  "refresh": "auto",
+  "schemaVersion": 40,
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": ["http-app"],
+          "value": ["http-app"]
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-docker-stats"
+        },
+        "definition": "SHOW TAG VALUES FROM \"docker_stats\" WITH KEY = \"container_name\"",
+        "description": "",
+        "includeAll": true,
+        "label": "Container name",
+        "multi": true,
+        "name": "container_name",
+        "options": [],
+        "query": {
+          "query": "SHOW TAG VALUES FROM \"docker_stats\" WITH KEY = \"container_name\"",
+          "refId": "InfluxVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "/^(?!.*-run-)(?!.*--).*$/",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-5m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Docker Stats Dashboard",
+  "uid": "docker-stats-dashboard",
+  "version": 7,
+  "weekStart": ""
+}

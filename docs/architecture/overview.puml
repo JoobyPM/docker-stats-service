@@ -1,0 +1,33 @@
+@startuml Docker Stats Service - Architecture Overview
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Docker Stats Service - Architecture Overview
+
+Person(user, "Developer", "A developer running performance tests")
+
+System_Boundary(docker_host, "Docker Host") {
+    Container(docker_stats_service, "Docker Stats Service", "Node.js", "Collects and processes container metrics")
+    Container(docker_daemon, "Docker Daemon", "Docker Engine", "Manages containers and provides stats")
+    
+    Boundary(monitored_containers, "Monitored Containers") {
+        Container(container1, "Container 1", "Docker Container", "Resource-constrained test container")
+        Container(container2, "Container 2", "Docker Container", "Resource-constrained test container")
+    }
+}
+
+System_Boundary(storage_visualization, "Storage & Visualization") {
+    ContainerDb(influxdb, "InfluxDB", "Time Series DB", "Stores container metrics")
+    Container(grafana, "Grafana", "Visualization", "Displays metrics dashboards")
+}
+
+Rel(user, grafana, "Views metrics", "HTTP/3000")
+Rel(docker_stats_service, docker_daemon, "Collects stats", "Unix Socket")
+Rel(docker_daemon, container1, "Manages", "Container Runtime")
+Rel(docker_daemon, container2, "Manages", "Container Runtime")
+Rel(docker_stats_service, influxdb, "Writes metrics", "HTTP/8086")
+Rel(grafana, influxdb, "Reads metrics", "HTTP/8086")
+
+@enduml 

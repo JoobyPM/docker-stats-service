@@ -1,0 +1,53 @@
+@startuml Docker Stats Service - Component Architecture
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Docker Stats Service - Component Architecture
+
+Container_Boundary(docker_stats_service, "Docker Stats Service") {
+    Component(event_monitor, "Event Monitor", "Node.js", "Monitors Docker events for container lifecycle")
+    Component(stats_collector, "Stats Collector", "Node.js", "Collects container metrics")
+    Component(metrics_batcher, "Metrics Batcher", "Node.js", "Batches metrics for efficient writes")
+    Component(retry_handler, "Retry Handler", "Node.js", "Handles retries for failed operations")
+    Component(shutdown_manager, "Shutdown Manager", "Node.js", "Manages graceful shutdown")
+    
+    Boundary(utils, "Utilities") {
+        Component(error_handler, "Error Handler", "Node.js", "Handles and classifies errors")
+        Component(logger, "Logger", "loglevel", "Handles logging with levels")
+    }
+}
+
+Container(docker_daemon, "Docker Daemon", "Docker Engine", "Provides container stats")
+ContainerDb(influxdb, "InfluxDB", "Time Series DB", "Stores metrics")
+
+' Event Monitor relationships
+Rel(event_monitor, docker_daemon, "Monitors events", "Unix Socket")
+Rel(event_monitor, stats_collector, "Triggers collection", "Internal")
+Rel(event_monitor, error_handler, "Reports errors", "Internal")
+Rel(event_monitor, logger, "Logs events", "Internal")
+
+' Stats Collector relationships
+Rel(stats_collector, docker_daemon, "Collects stats", "Unix Socket")
+Rel(stats_collector, metrics_batcher, "Sends metrics", "Internal")
+Rel(stats_collector, error_handler, "Reports errors", "Internal")
+Rel(stats_collector, logger, "Logs collection", "Internal")
+
+' Metrics Batcher relationships
+Rel(metrics_batcher, retry_handler, "Uses for writes", "Internal")
+Rel(metrics_batcher, error_handler, "Reports errors", "Internal")
+Rel(metrics_batcher, logger, "Logs batching", "Internal")
+
+' Retry Handler relationships
+Rel(retry_handler, influxdb, "Writes metrics", "HTTP/8086")
+Rel(retry_handler, error_handler, "Reports errors", "Internal")
+Rel(retry_handler, logger, "Logs retries", "Internal")
+
+' Shutdown Manager relationships
+Rel_L(shutdown_manager, event_monitor, "Stops", "Internal")
+Rel_L(shutdown_manager, stats_collector, "Stops", "Internal")
+Rel_L(shutdown_manager, metrics_batcher, "Flushes & stops", "Internal")
+Rel(shutdown_manager, logger, "Logs shutdown", "Internal")
+
+@enduml 

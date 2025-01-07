@@ -1,0 +1,62 @@
+{
+  "name": "docker-stats-service",
+  "version": "0.1.0",
+  "description": "A service that collects Docker container metrics and stores them in InfluxDB for monitoring and analysis. Supports real-time container stats collection with automatic container discovery.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint ./",
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "start": "node src/index.mjs",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
+    "docker:up:force": "docker compose -f docker/docker-compose.yml up -d --build",
+    "docker:logs": "docker compose -f docker/docker-compose.yml logs -f",
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "docker:build": "docker compose -f docker/docker-compose.yml build",
+    "rebuild": "pnpm run docker:down docker-stats-service && pnpm run docker:build docker-stats-service && pnpm run docker:up docker-stats-service",
+    "docker:restart": "docker compose -f docker/docker-compose.yml restart",
+    "docker:stop": "docker compose -f docker/docker-compose.yml stop",
+    "docker:ps": "docker compose -f docker/docker-compose.yml ps",
+    "plantuml:server": "docker run -d -p 9123:8080 --name plantuml-server plantuml/plantuml-server",
+    "jsdocs": "jsdoc -c jsdoc.config.json",
+    "generate:diagrams": "sh ./scripts/generate_diagrams.sh"
+  },
+  "keywords": [
+    "docker",
+    "metrics",
+    "monitoring",
+    "influxdb",
+    "container-stats",
+    "real-time"
+  ],
+  "author": "Pavlo Marakhovskyi",
+  "license": "MIT",
+  "dependencies": {
+    "dockerode": "^4.0.3",
+    "influx": "^5.9.3",
+    "loglevel": "^1.9.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/dockerode": "^3.3.33",
+    "@types/node": "^22.10.5",
+    "clean-jsdoc-theme": "^4.3.0",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-jsdoc": "^50.6.1",
+    "eslint-plugin-prettier": "^5.2.1",
+    "eslint-plugin-sonarjs": "^3.0.1",
+    "globals": "^15.14.0",
+    "husky": "^8.0.0",
+    "jsdoc": "^4.0.4",
+    "lint-staged": "^15.3.0",
+    "prettier": "^3.4.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=21.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
