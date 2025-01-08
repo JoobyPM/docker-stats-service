@@ -4,185 +4,156 @@ This document details the schema of metrics collected and stored by the Docker S
 
 ## Overview
 
-All metrics are stored in InfluxDB using the line protocol format with appropriate tags and fields.
+All metrics are stored in InfluxDB using the line protocol format with appropriate tags and fields under a single measurement named `docker_stats`.
 
-## Metric Types
+## Measurement Schema
 
-### CPU Metrics
+### Measurement Name
 
-**Measurement**: `docker_stats_cpu`
+All metrics are stored under the measurement: `docker_stats`
 
-**Tags**:
+### Tags
 
 - `container_id`: Container ID
 - `container_name`: Container name
-- `image`: Container image name
-- `host`: Host machine name
 
-**Fields**:
+### Available Fields
+
+#### CPU Metrics
 
 ```
 {
-  usage_percent: 45.2,      // Total CPU usage percentage
-  system_percent: 12.8,     // System CPU usage percentage
-  user_percent: 32.4,       // User CPU usage percentage
-  throttling_count: 0,      // Number of throttling periods
-  throttling_time_ns: 0     // Total throttling time in nanoseconds
+  cpu_percent: 45.2,                    // CPU usage percentage
+  cpu_total_usage: 406981000,           // Total CPU usage in nanoseconds
+  cpu_system_usage: 2800680000000,      // System CPU usage in nanoseconds
+  cpu_online: 16,                       // Number of online CPUs
+  cpu_usage_in_kernelmode: 51890000,    // CPU usage in kernel mode
+  cpu_usage_in_usermode: 355091000,     // CPU usage in user mode
+  cpu_throttling_periods: 11,           // Number of throttling periods
+  cpu_throttled_periods: 8,             // Number of periods where CPU was throttled
+  cpu_throttled_time: 584099000         // Total time CPU was throttled
 }
 ```
 
-### Memory Metrics
-
-**Measurement**: `docker_stats_memory`
-
-**Tags**:
-
-- `container_id`: Container ID
-- `container_name`: Container name
-- `image`: Container image name
-- `host`: Host machine name
-
-**Fields**:
+#### Memory Metrics
 
 ```
 {
-  usage_bytes: 1024576,     // Current memory usage in bytes
-  max_usage_bytes: 2097152, // Maximum memory usage in bytes
-  limit_bytes: 4194304,     // Memory limit in bytes
-  usage_percent: 48.9,      // Memory usage percentage
-  cache_bytes: 524288,      // Cache memory in bytes
-  rss_bytes: 500288,        // RSS memory in bytes
-  swap_bytes: 0             // Swap usage in bytes
+  mem_used: 80269312,                   // Current memory usage in bytes
+  mem_total: 268435456,                 // Memory limit in bytes
+  mem_active_anon: 75771904,            // Active anonymous memory
+  mem_inactive_anon: 0,                 // Inactive anonymous memory
+  mem_active_file: 0,                   // Active file-backed memory
+  mem_inactive_file: 0,                 // Inactive file-backed memory
+  mem_unevictable: 0,                   // Memory that cannot be reclaimed
+  mem_pgfault: 12345,                   // Number of page faults
+  mem_pgmajfault: 0                     // Number of major page faults
 }
 ```
 
-### Network Metrics
-
-**Measurement**: `docker_stats_network`
-
-**Tags**:
-
-- `container_id`: Container ID
-- `container_name`: Container name
-- `image`: Container image name
-- `host`: Host machine name
-- `interface`: Network interface name
-
-**Fields**:
+#### Network Metrics
 
 ```
 {
-  rx_bytes: 1024,          // Received bytes
-  tx_bytes: 512,           // Transmitted bytes
-  rx_packets: 42,          // Received packets
-  tx_packets: 21,          // Transmitted packets
-  rx_dropped: 0,           // Dropped incoming packets
-  tx_dropped: 0,           // Dropped outgoing packets
-  rx_errors: 0,            // Receive errors
-  tx_errors: 0             // Transmit errors
+  net_in_bytes: 1574,                   // Total bytes received
+  net_out_bytes: 568,                   // Total bytes transmitted
+  net_eth0_in_bytes: 1574,              // Bytes received on eth0
+  net_eth0_out_bytes: 568,              // Bytes transmitted on eth0
+  net_eth0_in_packets: 14,              // Packets received on eth0
+  net_eth0_out_packets: 7,              // Packets transmitted on eth0
+  net_eth0_in_errors: 0,                // Receive errors on eth0
+  net_eth0_out_errors: 0,               // Transmit errors on eth0
+  net_eth0_in_dropped: 0,               // Packets dropped on receive (eth0)
+  net_eth0_out_dropped: 0               // Packets dropped on transmit (eth0)
 }
 ```
 
-### Block I/O Metrics
-
-**Measurement**: `docker_stats_blockio`
-
-**Tags**:
-
-- `container_id`: Container ID
-- `container_name`: Container name
-- `image`: Container image name
-- `host`: Host machine name
-- `device`: Block device name
-
-**Fields**:
+#### Block I/O Metrics
 
 ```
 {
-  read_bytes: 4096,        // Bytes read
-  write_bytes: 8192,       // Bytes written
-  read_ops: 2,             // Read operations
-  write_ops: 4,            // Write operations
-  async_bytes: 0,          // Async I/O bytes
-  sync_bytes: 12288,       // Sync I/O bytes
-  async_ops: 0,            // Async I/O operations
-  sync_ops: 6              // Sync I/O operations
+  blkio_read_bytes: 4096,               // Total bytes read from disk
+  blkio_write_bytes: 8192               // Total bytes written to disk
 }
 ```
 
-### PIDs Metrics
-
-**Measurement**: `docker_stats_pids`
-
-**Tags**:
-
-- `container_id`: Container ID
-- `container_name`: Container name
-- `image`: Container image name
-- `host`: Host machine name
-
-**Fields**:
+#### Process Metrics
 
 ```
 {
-  current: 12,             // Current number of processes
-  limit: 4096             // Process limit
+  pids_current: 22,                     // Current number of processes
+  num_procs: 22                         // Total number of processes
 }
 ```
 
-## Container Events
-
-**Measurement**: `docker_events`
-
-**Tags**:
-
-- `container_id`: Container ID
-- `container_name`: Container name
-- `image`: Container image name
-- `host`: Host machine name
-- `event_type`: Event type (start, stop, die, etc.)
-
-**Fields**:
+#### Timestamp Metrics
 
 ```
 {
-  timestamp: 1642612345,   // Event timestamp
-  status: "start",         // Event status
-  exit_code: 0            // Exit code (for stop/die events)
+  read_time: 1642612345000,             // Current stats collection timestamp
+  preread_time: 1642612344000           // Previous stats collection timestamp
 }
 ```
 
 ## Example Queries
 
-### CPU Usage Over Time
+### CPU Usage and Throttling
 
-```flux
-from(bucket: "docker_metrics")
-  |> range(start: -1h)
-  |> filter(fn: (r) => r._measurement == "docker_stats_cpu")
-  |> filter(fn: (r) => r.container_name == "web-1")
-  |> filter(fn: (r) => r._field == "usage_percent")
+```sql
+SELECT cpu_percent, cpu_total_usage, cpu_throttled_time,
+       cpu_throttled_periods, cpu_throttling_periods
+FROM docker_stats
+WHERE container_name = 'docker-stats-service'
+  AND time > now() - 1h
+LIMIT 3
 ```
 
-### Memory Usage by Container
+### Memory Analysis
 
-```flux
-from(bucket: "docker_metrics")
-  |> range(start: -5m)
-  |> filter(fn: (r) => r._measurement == "docker_stats_memory")
-  |> filter(fn: (r) => r._field == "usage_percent")
-  |> group(columns: ["container_name"])
-  |> mean()
+```sql
+SELECT mem_used, mem_total,
+       mem_active_anon, mem_inactive_anon,
+       mem_active_file, mem_inactive_file,
+       mem_pgfault, mem_pgmajfault
+FROM docker_stats
+WHERE container_name = 'docker-stats-service'
+  AND time > now() - 5m
+LIMIT 3
 ```
 
-### Network Traffic Rate
+### Network Interface Statistics
 
-```flux
-from(bucket: "docker_metrics")
-  |> range(start: -1h)
-  |> filter(fn: (r) => r._measurement == "docker_stats_network")
-  |> filter(fn: (r) => r._field =~ /bytes$/)
-  |> derivative(unit: 1s)
+```sql
+SELECT net_eth0_in_bytes, net_eth0_out_bytes,
+       net_eth0_in_packets, net_eth0_out_packets,
+       net_eth0_in_errors, net_eth0_out_errors
+FROM docker_stats
+WHERE container_name = 'docker-stats-service'
+  AND time > now() - 1h
+LIMIT 3
+```
+
+### Block I/O Monitoring
+
+```sql
+SELECT non_negative_derivative(blkio_read_bytes, 1s) as read_rate,
+       non_negative_derivative(blkio_write_bytes, 1s) as write_rate
+FROM docker_stats
+WHERE container_name = 'docker-stats-service'
+  AND time > now() - 30m
+LIMIT 3
+```
+
+### Process and Resource Metrics
+
+```sql
+SELECT pids_current, num_procs, cpu_online,
+       cpu_system_usage, cpu_usage_in_kernelmode,
+       cpu_usage_in_usermode
+FROM docker_stats
+WHERE container_name = 'docker-stats-service'
+  AND time > now() - 15m
+LIMIT 3
 ```
 
 ## Schema Evolution
@@ -191,17 +162,18 @@ from(bucket: "docker_metrics")
 
 1. **v1.0.0**
 
-   - Initial schema
-   - Basic metrics support
+   - Initial schema with basic metrics
 
 2. **v1.1.0**
 
-   - Added PIDs metrics
-   - Enhanced network metrics
+   - Added detailed memory stats
+   - Added CPU throttling metrics
+   - Added per-interface network stats
 
 3. **v1.2.0**
-   - Added container events
-   - Extended block I/O metrics
+   - Added timestamp metrics
+   - Added process metrics
+   - Enhanced block I/O metrics
 
 ### Compatibility
 
@@ -240,6 +212,6 @@ from(bucket: "docker_metrics")
 
 ## Further Reading
 
-- [InfluxDB Line Protocol](https://docs.influxdata.com/influxdb/v2.7/reference/syntax/line-protocol/)
+- [InfluxDB Line Protocol](https://docs.influxdata.com/influxdb/v1.8/write_protocols/line_protocol_reference/)
 - [Metrics Collection](../guides/metrics.md)
 - [Configuration](../configuration.md)

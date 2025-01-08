@@ -29,8 +29,12 @@ const {
   DOCKER_SOCKET_PATH = '/var/run/docker.sock',
   STATS_BUFFER_SIZE = '1048576', // 1MB max buffer size
   STATS_LINE_SIZE = '102400', // 100KB max line size
-  STATS_PARSE_TIMEOUT = '30000' // 30 seconds without valid parse triggers reset
+  STATS_PARSE_TIMEOUT = '30000', // 30 seconds without valid parse triggers reset
+  STATS_FIELDS = '' // Empty means all fields, 'ESSENTIAL' for core subset, or comma-separated list
 } = process.env;
+
+// Define essential fields that should be included when STATS_FIELDS=ESSENTIAL
+const ESSENTIAL_FIELDS = ['cpu_percent', 'mem_used', 'mem_total', 'net_in_bytes', 'net_out_bytes'];
 
 /**
  * @typedef {object} DockerConfig
@@ -39,6 +43,7 @@ const {
  * @property {number} stats.maxBufferSize - Maximum buffer size in bytes
  * @property {number} stats.maxLineSize - Maximum line size in bytes
  * @property {number} stats.parseTimeoutMs - Parse timeout in milliseconds
+ * @property {string[]} stats.fields - Fields to record (empty array means all fields)
  */
 
 /**
@@ -71,6 +76,40 @@ const {
  * @property {InfluxConfig} influx - InfluxDB configuration
  * @property {BatchConfig} batch - Batch configuration
  */
+
+/**
+ * Parses the STATS_FIELDS environment variable
+ * @returns {string[]} Array of field names to record
+ */
+function parseStatsFields() {
+  if (!STATS_FIELDS) {
+    return []; // Empty array means record all fields
+  }
+
+  if (STATS_FIELDS.toUpperCase() === 'ESSENTIAL') {
+    return ESSENTIAL_FIELDS;
+  }
+
+  // Parse and validate field names
+  const fields = new Set(
+    STATS_FIELDS.split(',')
+      .map(field => field.trim())
+      .filter(field => {
+        if (!field) {
+          log.debug('Empty field name found in STATS_FIELDS, ignoring');
+          return false;
+        }
+        return true;
+      })
+  );
+
+  // Check for duplicates
+  if (fields.size < STATS_FIELDS.split(',').length) {
+    log.debug('Duplicate field names found in STATS_FIELDS, they will be ignored');
+  }
+
+  return Array.from(fields);
+}
 
 /**
  * Validates and initializes the configuration
@@ -106,7 +145,8 @@ function initConfig() {
       stats: {
         maxBufferSize: parseInt(STATS_BUFFER_SIZE, 10),
         maxLineSize: parseInt(STATS_LINE_SIZE, 10),
-        parseTimeoutMs: parseInt(STATS_PARSE_TIMEOUT, 10)
+        parseTimeoutMs: parseInt(STATS_PARSE_TIMEOUT, 10),
+        fields: parseStatsFields()
       }
     },
     influx: {

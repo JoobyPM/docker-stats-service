@@ -36,6 +36,141 @@ Debug patterns for `DEBUG`:
 | `STATS_BUFFER_SIZE`   | Size of stats stream buffer in bytes      | `1048576`              | No       |
 | `STATS_LINE_SIZE`     | Maximum size of a single stats line       | `102400`               | No       |
 | `STATS_PARSE_TIMEOUT` | Timeout for parsing stats in milliseconds | `30000`                | No       |
+| `STATS_FIELDS`        | Fields to collect and store in InfluxDB   | `""`                   | No       |
+
+#### STATS_FIELDS Configuration
+
+The `STATS_FIELDS` variable controls which metrics are collected and stored in InfluxDB. It supports three modes:
+
+1. **All Fields** (Default)
+
+   ```bash
+   STATS_FIELDS=""  # Empty value collects all available fields
+   ```
+
+2. **Essential Fields Only**
+
+   ```bash
+   STATS_FIELDS="ESSENTIAL"  # Collects core metrics only (CPU, memory, network)
+   ```
+
+3. **Custom Field Selection**
+
+   ```bash
+   # Example: Basic monitoring
+   STATS_FIELDS="cpu_percent,mem_used,pids_current"
+
+   # Example: Network-focused monitoring
+   STATS_FIELDS="net_in_bytes,net_out_bytes,net_eth0_in_packets,net_eth0_out_packets"
+
+   # Example: Detailed memory analysis
+   STATS_FIELDS="mem_used,mem_cache,mem_active_anon,mem_inactive_anon,mem_pgfault"
+
+   # Example: I/O monitoring
+   STATS_FIELDS="blkio_read_bytes,blkio_write_bytes,blkio_sync_bytes"
+   ```
+
+#### Available Metrics Fields
+
+Below are all available fields that can be collected, grouped by category:
+
+##### CPU Metrics
+
+| Field Name                | Description                               |
+| ------------------------- | ----------------------------------------- |
+| `cpu_percent`             | CPU usage percentage                      |
+| `cpu_total_usage`         | Total CPU usage in nanoseconds            |
+| `cpu_system_usage`        | System CPU usage in nanoseconds           |
+| `cpu_online`              | Number of online CPUs                     |
+| `cpu_usage_in_kernelmode` | CPU usage in kernel mode                  |
+| `cpu_usage_in_usermode`   | CPU usage in user mode                    |
+| `cpu_throttling_periods`  | Number of throttling periods              |
+| `cpu_throttled_periods`   | Number of periods where CPU was throttled |
+| `cpu_throttled_time`      | Total time CPU was throttled              |
+| `cpu_[N]_usage`           | Usage per CPU core (N = core number)      |
+
+##### Memory Metrics
+
+| Field Name                | Description                            |
+| ------------------------- | -------------------------------------- |
+| `mem_used`                | Current memory usage in bytes          |
+| `mem_total`               | Memory limit in bytes                  |
+| `mem_max`                 | Maximum memory usage recorded          |
+| `mem_failcnt`             | Number of memory usage hits limits     |
+| `mem_cache`               | Page cache memory                      |
+| `mem_rss`                 | Anonymous and swap cache               |
+| `mem_rss_huge`            | Number of resident huge pages          |
+| `mem_mapped_file`         | Size of memory-mapped files            |
+| `mem_active_anon`         | Active anonymous memory                |
+| `mem_inactive_anon`       | Inactive anonymous memory              |
+| `mem_active_file`         | Active file-backed memory              |
+| `mem_inactive_file`       | Inactive file-backed memory            |
+| `mem_unevictable`         | Memory that cannot be reclaimed        |
+| `mem_hierarchical_limit`  | Memory limit including children        |
+| `mem_total_active_anon`   | Total active anonymous memory          |
+| `mem_total_inactive_anon` | Total inactive anonymous memory        |
+| `mem_total_active_file`   | Total active file-backed memory        |
+| `mem_total_inactive_file` | Total inactive file-backed memory      |
+| `mem_total_cache`         | Total page cache                       |
+| `mem_total_rss`           | Total anonymous and swap cache         |
+| `mem_total_rss_huge`      | Total resident huge pages              |
+| `mem_total_mapped_file`   | Total size of memory-mapped files      |
+| `mem_total_writeback`     | Total bytes being written back to disk |
+| `mem_total_pgfault`       | Total page faults                      |
+| `mem_total_pgmajfault`    | Total major page faults                |
+| `mem_total_pgpgin`        | Total pages paged in                   |
+| `mem_total_pgpgout`       | Total pages paged out                  |
+| `mem_total_unevictable`   | Total memory that cannot be reclaimed  |
+
+##### Network Metrics
+
+| Field Name                | Description                       |
+| ------------------------- | --------------------------------- |
+| `net_in_bytes`            | Total bytes received              |
+| `net_out_bytes`           | Total bytes transmitted           |
+| `net_[iface]_in_bytes`    | Bytes received per interface      |
+| `net_[iface]_out_bytes`   | Bytes transmitted per interface   |
+| `net_[iface]_in_packets`  | Packets received per interface    |
+| `net_[iface]_out_packets` | Packets transmitted per interface |
+| `net_[iface]_in_errors`   | Receive errors per interface      |
+| `net_[iface]_out_errors`  | Transmit errors per interface     |
+| `net_[iface]_in_dropped`  | Packets dropped on receive        |
+| `net_[iface]_out_dropped` | Packets dropped on transmit       |
+
+##### Block I/O Metrics
+
+| Field Name          | Description                 |
+| ------------------- | --------------------------- |
+| `blkio_read_bytes`  | Total bytes read from disk  |
+| `blkio_write_bytes` | Total bytes written to disk |
+| `blkio_sync_bytes`  | Synchronous I/O bytes       |
+| `blkio_async_bytes` | Asynchronous I/O bytes      |
+| `blkio_total_bytes` | Total I/O bytes             |
+
+##### Process Metrics
+
+| Field Name     | Description                         |
+| -------------- | ----------------------------------- |
+| `pids_current` | Current number of processes         |
+| `pids_limit`   | Maximum number of processes allowed |
+| `num_procs`    | Total number of processes           |
+
+##### Timestamp Metrics
+
+| Field Name     | Description                         |
+| -------------- | ----------------------------------- |
+| `read_time`    | Current stats collection timestamp  |
+| `preread_time` | Previous stats collection timestamp |
+
+> **Note**: When using `STATS_FIELDS="ESSENTIAL"`, only the following fields are collected:
+>
+> - `cpu_percent`
+> - `mem_used`
+> - `mem_total`
+> - `net_in_bytes`
+> - `net_out_bytes`
+
+> **Performance Tip**: Collecting fewer fields reduces the storage requirements and processing overhead. Choose fields that are relevant to your monitoring needs.
 
 ### InfluxDB Configuration (v1.X)
 
@@ -53,11 +188,10 @@ Debug patterns for `DEBUG`:
 
 ### Metrics Configuration
 
-| Variable         | Description                    | Default        | Required |
-| ---------------- | ------------------------------ | -------------- | -------- |
-| `BATCH_SIZE`     | Maximum points per batch       | `100`          | No       |
-| `BATCH_WAIT_MS`  | Maximum wait time before flush | `2000`         | No       |
-| `METRICS_PREFIX` | Prefix for all metrics         | `docker_stats` | No       |
+| Variable        | Description                    | Default | Required |
+| --------------- | ------------------------------ | ------- | -------- |
+| `BATCH_SIZE`    | Maximum points per batch       | `100`   | No       |
+| `BATCH_WAIT_MS` | Maximum wait time before flush | `2000`  | No       |
 
 ## Docker Configuration
 
