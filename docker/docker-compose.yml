@@ -32,9 +32,9 @@ services:
     depends_on:
       - influxdb
     volumes:
-      - ../docker/config/dashboards:/var/lib/grafana/dashboards:ro
-      - ../docker/config/default.yaml:/etc/grafana/provisioning/dashboards/default.yaml:ro
-      - ../docker/config/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ../docker/grafana_config/dashboards:/var/lib/grafana/dashboards:ro
+      - ../docker/grafana_config/default.yaml:/etc/grafana/provisioning/dashboards/default.yaml:ro
+      - ../docker/grafana_config/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
       - grafana_data:/var/lib/grafana
     restart: unless-stopped
     privileged: true
@@ -63,8 +63,6 @@ services:
       - INFLUXDB_DB=docker-stats
       - INFLUXDB_USER=admin
       - INFLUXDB_PASS=admin
-      # How frequently to collect stats (example: 1 second)
-      - STATS_INTERVAL_MS=1000
       # Retry mechanism configuration
       - INFLUXDB_RETRY_MAX=5
       - INFLUXDB_RETRY_DELAY=1000

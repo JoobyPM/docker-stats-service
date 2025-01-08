@@ -1,0 +1,136 @@
+@startuml Docker Stats Service - Metrics Collection Flow
+
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+box "Docker Stats Service" #LightBlue
+participant "Event Monitor" as EventMonitor
+participant "Container Watcher" as ContainerWatcher
+participant "Stream Manager" as StreamManager
+participant "Stats Parser" as StatsParser
+participant "Validation" as Validation
+participant "Metrics Batcher" as MetricsBatcher
+participant "Retry Handler" as RetryHandler
+end box
+
+box "External Systems" #LightGreen
+participant "Docker Daemon" as DockerDaemon
+participant "InfluxDB" as InfluxDB
+end box
+
+== Container Start ==
+DockerDaemon -> EventMonitor: Container Start Event
+activate EventMonitor
+EventMonitor -> ContainerWatcher: Start Container Monitoring
+deactivate EventMonitor
+
+activate ContainerWatcher
+ContainerWatcher -> Validation: Validate Container
+activate Validation
+Validation --> ContainerWatcher: Container Valid
+deactivate Validation
+
+ContainerWatcher -> StreamManager: Create Stats Stream
+deactivate ContainerWatcher
+
+== Stream Management ==
+activate StreamManager
+StreamManager -> StreamManager: Initialize Stream State
+note right: State: STARTING
+
+loop Until Stream Ends or Container Stops
+    StreamManager -> DockerDaemon: Open Stats Stream
+    activate DockerDaemon
+    
+    loop For Each Stats Event
+        DockerDaemon --> StreamManager: Stream Stats Event
+        
+        StreamManager -> StreamManager: Update State
+        note right: State: ACTIVE
+        
+        StreamManager -> Validation: Validate Stats
+        activate Validation
+        Validation --> StreamManager: Stats Valid
+        deactivate Validation
+        
+        StreamManager -> StatsParser: Process Raw Stats
+        activate StatsParser
+        
+        StatsParser -> StatsParser: Parse & Transform
+        note right: Calculate CPU %\nFormat Memory\nAggregate Network
+        
+        StatsParser -> MetricsBatcher: Send Parsed Stats
+        deactivate StatsParser
+        activate MetricsBatcher
+    end
+    deactivate DockerDaemon
+end
+
+== Batch Processing ==
+MetricsBatcher -> MetricsBatcher: Check Batch Criteria
+note right
+  Flush if:
+  - Batch size >= maxSize
+  - Time > maxWaitMs
+  - Shutdown triggered
+end note
+
+alt Batch Ready
+    MetricsBatcher -> RetryHandler: Write Batch
+    activate RetryHandler
+    
+    loop Until Success or Max Retries
+        RetryHandler -> InfluxDB: Write Points
+        activate InfluxDB
+        
+        alt Success
+            InfluxDB --> RetryHandler: Success
+            RetryHandler --> MetricsBatcher: Success
+        else Failure
+            InfluxDB --> RetryHandler: Error
+            RetryHandler -> RetryHandler: Calculate Backoff
+            note right: Exponential with Jitter
+        end
+        deactivate InfluxDB
+    end
+    deactivate RetryHandler
+end
+deactivate MetricsBatcher
+
+== Stream Error Handling ==
+StreamManager -> StreamManager: Error Detected
+activate StreamManager
+note right: State: ERROR
+
+alt Can Retry
+    StreamManager -> StreamManager: Reset Stream
+    note right: State: STARTING
+else Max Retries Exceeded
+    StreamManager -> StreamManager: Close Stream
+    note right: State: STOPPED
+end
+deactivate StreamManager
+
+== Container Stop ==
+DockerDaemon -> EventMonitor: Container Stop Event
+activate EventMonitor
+EventMonitor -> ContainerWatcher: Stop Container Monitoring
+deactivate EventMonitor
+
+activate ContainerWatcher
+ContainerWatcher -> StreamManager: Stop Stream
+deactivate ContainerWatcher
+
+activate StreamManager
+StreamManager -> StreamManager: Cleanup Stream
+note right: State: STOPPING → STOPPED
+deactivate StreamManager
+
+== Graceful Shutdown ==
+[-> MetricsBatcher: Shutdown Signal
+activate MetricsBatcher
+MetricsBatcher -> MetricsBatcher: Flush Remaining Points
+MetricsBatcher -> RetryHandler: Final Write
+deactivate MetricsBatcher
+
+@enduml 

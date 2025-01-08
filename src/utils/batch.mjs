@@ -1,4 +1,11 @@
+/**
+ * Metrics Batcher
+ * Provides efficient batching for InfluxDB writes
+ * @module utils/batch
+ */
+
 import log from 'loglevel';
+import { retryWithBackoff } from './common.mjs';
 
 /**
  * @typedef {object} BatchOptions
@@ -60,8 +67,8 @@ export function createMetricsBatcher(influx, options = {}) {
   const config = { ...DEFAULT_BATCH_OPTIONS, ...options };
   let batch = [];
   let lastFlushTime = Date.now();
-  let flushTimeout = null;
-  let isShutdown = false;
+  let scheduledFlushTimeout = null;
+  let batcherIsShutdown = false;
 
   /**
    * Writes a batch of points to InfluxDB with retry logic
@@ -70,27 +77,24 @@ export function createMetricsBatcher(influx, options = {}) {
    * @returns {Promise<boolean>} Success status of the write operation
    */
   async function writeBatch(points) {
-    for (let attempt = 0; attempt < config.maxRetries; attempt++) {
-      try {
-        await influx.writePoints(points);
-        log.debug(`Successfully wrote batch of ${points.length} points`);
-        return true;
-      } catch (error) {
-        const isLastAttempt = attempt === config.maxRetries - 1;
-        if (isLastAttempt) {
-          log.error(`Failed to write batch after ${config.maxRetries} attempts:`, error);
-          return false;
+    try {
+      await retryWithBackoff(() => influx.writePoints(points), {
+        maxRetries: config.maxRetries,
+        initialDelayMs: config.retryDelayMs,
+        maxDelayMs: config.retryDelayMs * Math.pow(2, config.maxRetries),
+        shouldRetry: (error, attempt) => {
+          log.warn(
+            `Failed to write batch (attempt ${attempt}/${config.maxRetries}): ${error.message}`
+          );
+          return true;
         }
-
-        const delay = config.retryDelayMs * Math.pow(2, attempt);
-        log.warn(
-          `Failed to write batch (attempt ${attempt + 1}/${config.maxRetries}), ` +
-            `retrying in ${delay}ms: ${error.message}`
-        );
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
+      });
+      log.debug(`Successfully wrote batch of ${points.length} points`);
+      return true;
+    } catch (error) {
+      log.error(`Failed to write batch after ${config.maxRetries} attempts:`, error);
+      return false;
     }
-    return false;
   }
 
   /**
@@ -99,9 +103,9 @@ export function createMetricsBatcher(influx, options = {}) {
    * @returns {Promise<void>}
    */
   async function flush() {
-    if (flushTimeout) {
-      clearTimeout(flushTimeout);
-      flushTimeout = null;
+    if (scheduledFlushTimeout) {
+      clearTimeout(scheduledFlushTimeout);
+      scheduledFlushTimeout = null;
     }
 
     if (batch.length === 0) {
@@ -114,14 +118,14 @@ export function createMetricsBatcher(influx, options = {}) {
 
     try {
       const success = await writeBatch(pointsToWrite);
-      if (!success && !isShutdown) {
+      if (!success && !batcherIsShutdown) {
         // On failure, if we're not shutting down, add points back to the batch
         batch.push(...pointsToWrite);
         scheduleFlush();
       }
     } catch (error) {
       log.error('Error during batch flush:', error);
-      if (!isShutdown) {
+      if (!batcherIsShutdown) {
         batch.push(...pointsToWrite);
         scheduleFlush();
       }
@@ -133,14 +137,14 @@ export function createMetricsBatcher(influx, options = {}) {
    * @private
    */
   function scheduleFlush() {
-    if (flushTimeout || isShutdown) {
+    if (scheduledFlushTimeout || batcherIsShutdown) {
       return;
     }
 
     const timeUntilFlush = Math.max(0, config.maxWaitMs - (Date.now() - lastFlushTime));
 
-    flushTimeout = setTimeout(() => {
-      flushTimeout = null;
+    scheduledFlushTimeout = setTimeout(() => {
+      scheduledFlushTimeout = null;
       flush().catch(err => log.error('Error in scheduled flush:', err));
     }, timeUntilFlush);
   }
@@ -151,7 +155,7 @@ export function createMetricsBatcher(influx, options = {}) {
    * @throws {Error} If the batcher is shutdown
    */
   function add(points) {
-    if (isShutdown) {
+    if (batcherIsShutdown) {
       log.warn('Attempted to add points after batcher shutdown');
       return;
     }
@@ -179,11 +183,11 @@ export function createMetricsBatcher(influx, options = {}) {
    * @returns {Promise<void>} Resolves when shutdown is complete
    */
   async function shutdown() {
-    isShutdown = true;
+    batcherIsShutdown = true;
 
-    if (flushTimeout) {
-      clearTimeout(flushTimeout);
-      flushTimeout = null;
+    if (scheduledFlushTimeout) {
+      clearTimeout(scheduledFlushTimeout);
+      scheduledFlushTimeout = null;
     }
 
     if (batch.length > 0) {

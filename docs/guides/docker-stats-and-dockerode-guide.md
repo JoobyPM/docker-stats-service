@@ -1,148 +1,261 @@
-# Docker Container Stats Explained: A Concise Guide to Dockerode & Docker Stats
+# Docker Stats and Dockerode Guide
 
-## Introduction
+This guide explains how the Docker Stats Service interacts with Docker using the Dockerode library.
 
-Docker provides detailed container metrics—like CPU usage, memory usage, and network I/O—through its **Docker stats** feature. This data is vital for monitoring container performance, understanding resource constraints, and troubleshooting issues.
+## Docker Stats API
 
-Tools such as **[Dockerode](https://www.npmjs.com/package/dockerode)** (a Node.js client for Docker) or the built-in **`docker stats`** command can retrieve the **same underlying data** from the Docker Engine. Under the hood, Docker collects these metrics from **[cgroups (control groups)](https://docs.docker.com/config/containers/resource_constraints/)** and the Linux kernel, packaging them into JSON statistics for each container.
+### Overview
 
-This guide provides both a **high-level** and a **technical** overview of how Docker stats work, how Dockerode retrieves the same metrics, and how to interpret CPU/memory usage—especially when containers do not have explicit resource limits.
+The Docker Stats API provides real-time container metrics through a streaming interface.
 
----
+```js
+// Example stats stream creation
+const container = await docker.getContainer(containerId);
+const stream = await container.stats({ stream: true });
+```
 
-## 1. How Docker Collects Stats
+### Stats Format
 
-### High-Level Explanation
+Raw stats from Docker come in JSON format:
 
-- **Docker Engine** exposes real-time container usage stats (CPU, memory, network I/O, etc.) via the **Docker API**.
-- When you run `docker stats` or use Dockerode’s `container.stats()`, the Docker daemon retrieves these metrics from **cgroup** subsystems in the kernel.
-- Docker returns a **JSON object** with fields such as:
-  - `cpu_stats`
-  - `memory_stats`
-  - `precpu_stats`
-  - `networks`
-  - `blkio_stats`
-  - `read` (timestamp)
-- The **`cpu_stats`** object includes counters for CPU usage (kernel and user mode) and the total CPU time consumed, as measured by the kernel’s CPU accounting in cgroups.
+```json
+{
+  "cpu_stats": {
+    "cpu_usage": {
+      "total_usage": 1234567890,
+      "percpu_usage": [123456, 234567],
+      "usage_in_kernelmode": 123456,
+      "usage_in_usermode": 234567
+    },
+    "system_cpu_usage": 9876543210,
+    "online_cpus": 2
+  },
+  "memory_stats": {
+    "usage": 1024576,
+    "max_usage": 2097152,
+    "limit": 4194304
+  },
+  "networks": {
+    "eth0": {
+      "rx_bytes": 1024,
+      "tx_bytes": 512
+    }
+  },
+  "blkio_stats": {
+    "io_service_bytes_recursive": [
+      {
+        "major": 8,
+        "minor": 0,
+        "op": "Read",
+        "value": 4096
+      }
+    ]
+  }
+}
+```
 
-### Technical Details
+## Dockerode Integration
 
-Under Linux, **cgroups** track resource usage (CPU time, memory usage, I/O operations, etc.) for each process group. A Docker container is essentially a **cgroup** plus namespaces. The daemon queries these cgroup counters and aggregates the values into Docker’s stats API response.
-
-For more details, see **[Docker Docs - Resource Constraints](https://docs.docker.com/config/containers/resource_constraints/)** for a deeper look.
-
----
-
-## 2. Retrieving Stats with Dockerode
-
-Dockerode uses Docker’s **Remote API**. Below is a minimal Node.js snippet:
+### Client Setup
 
 ```js
 import Docker from 'dockerode';
 
-const docker = new Docker({ socketPath: '/var/run/docker.sock' });
+const docker = new Docker({
+  socketPath: process.env.DOCKER_SOCKET_PATH || '/var/run/docker.sock'
+});
+```
 
-/**
- *
- * @param containerId
- */
-async function getContainerStats(containerId) {
-  const container = docker.getContainer(containerId);
-  // { stream: false } returns the full JSON once
-  const stats = await container.stats({ stream: false });
-  console.log(stats);
+### Container Operations
+
+1. **List Containers**
+
+   ```js
+   const containers = await docker.listContainers({
+     all: false, // Only running containers
+     filters: {
+       status: ['running']
+     }
+   });
+   ```
+
+2. **Get Container**
+   ```js
+   const container = await docker.getContainer(containerId);
+   const info = await container.inspect();
+   ```
+
+### Event Monitoring
+
+```js
+const events = await docker.getEvents({
+  filters: {
+    type: ['container'],
+    event: ['start', 'stop', 'die']
+  }
+});
+
+events.on('data', data => {
+  const event = JSON.parse(data.toString());
+  // Handle container event
+});
+```
+
+## Stream Management
+
+### Stream Creation
+
+```js
+async function createStatsStream(containerId) {
+  const container = await docker.getContainer(containerId);
+  return await container.stats({
+    stream: true,
+    one_shot: false
+  });
 }
 ```
 
-This `stats` object mirrors what you’d see in the CLI with `docker stats --no-stream --format="{{json .}}"`. You’ll find fields like `cpu_stats`, `memory_stats`, `networks`, etc.
-
----
-
-## 3. Nature of Data from `docker stats`
-
-A typical **`docker stats`** JSON response includes:
-
-- **`cpu_stats`**
-
-  - `cpu_usage`: counters for user-mode and kernel-mode CPU time
-  - `system_cpu_usage`: the total CPU usage on the host
-  - `online_cpus`: how many CPU cores were online at the time
-
-- **`precpu_stats`**  
-  A snapshot of `cpu_stats` from the previous measurement (useful for calculating deltas).
-
-- **`memory_stats`**
-
-  - `usage`: how many bytes the container is currently using
-  - `limit`: the memory limit cgroup assigned (if any)
-
-- **`networks`**
-
-  - For each interface, `rx_bytes` and `tx_bytes`, etc.
-
-- **`read`**
-  - An ISO timestamp when Docker took the measurement (e.g., `2025-01-05T16:26:37.422Z`).
-
----
-
-## 4. What Does the `cpu_stats` Field Mean?
-
-The **`cpu_stats`** field represents the CPU usage details as tracked by cgroups for that container. It typically includes:
-
-- **`cpu_usage.total_usage`**: Total CPU time spent by all container processes in both user mode and kernel mode.
-- **`system_cpu_usage`**: Host’s total CPU usage (not just the container), used to calculate relative usage.
-
-A common approach (similar to Docker’s CLI) is:
+### Stream Handling
 
 ```js
-const cpuDelta = cpu_stats.cpu_usage.total_usage - precpu_stats.cpu_usage.total_usage;
-const systemDelta = cpu_stats.system_cpu_usage - precpu_stats.system_cpu_usage;
-const onlineCPUs = cpu_stats.online_cpus || 1;
+function handleStream(stream, containerId) {
+  stream.on('data', chunk => {
+    const stats = JSON.parse(chunk.toString());
+    // Process stats data
+  });
 
-const cpuPercent = (cpuDelta / systemDelta) * onlineCPUs * 100;
+  stream.on('error', error => {
+    // Handle stream error
+  });
+
+  stream.on('end', () => {
+    // Handle stream end
+  });
+}
 ```
 
-This yields a **percentage** of the CPU resources used by the container during the sampling interval.
+## Error Handling
 
----
+### Common Errors
 
-## 5. Interpreting CPU Limits & 100% Usage
+1. **Container Not Found**
 
-- If you run a container **without** specifying a CPU limit (e.g., `--cpus=2.0`), Docker may treat the entire host CPU resource as available. **100% usage** in that scenario means the container is fully using **one CPU core**. If the container can use more than one core, you might see >100% usage (e.g., 200% means two cores).
+   ```js
+   try {
+     const container = await docker.getContainer(containerId);
+     await container.inspect();
+   } catch (error) {
+     if (error.statusCode === 404) {
+       // Container not found
+     }
+   }
+   ```
 
-- **If your Docker Compose or `docker run` uses `--cpus=2.0`**, and the metric shows **100%**, that means the container is consuming **100% of the allocated two CPU cores**. In other words, it is maxing out its quota.
+2. **Permission Denied**
+   ```js
+   try {
+     await createStatsStream(containerId);
+   } catch (error) {
+     if (error.statusCode === 403) {
+       // Permission denied
+     }
+   }
+   ```
 
-> **Reference**: **[Docker Docs - Limit a container’s resources (CPU)](https://docs.docker.com/config/containers/resource_constraints/#cpu)**
+### Error Recovery
 
----
+```js
+async function withRetry(operation, maxAttempts = 3) {
+  let lastError;
 
-## 6. Memory Usage Interpretation
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+      }
+    }
+  }
 
-- **`memory_stats.usage`**: The current memory usage of the container (in bytes).
-- **`memory_stats.limit`**: The maximum memory allocated to the container under cgroups.
+  throw lastError;
+}
+```
 
-If no memory limit is set (`-m`), Docker may set the `limit` to the host’s total memory. If you do specify `-m 512m`, then `limit` will reflect that cgroup constraint (e.g. `536870912` bytes).
+## Best Practices
 
----
+### Resource Management
 
-## 7. Other Metrics
+1. **Stream Cleanup**
 
-- **Network I/O** (`networks`):  
-  For each network interface, Docker shows `rx_bytes`, `tx_bytes`, etc. Summing across all interfaces gives total bytes in/out for the container.
+   ```js
+   function cleanupStream(stream) {
+     if (stream && !stream.destroyed) {
+       stream.destroy();
+     }
+   }
+   ```
 
-- **Block I/O** (`blkio_stats`):  
-  If block `I/O` is relevant, Docker can provide reads/writes at the block level for the container.
+2. **Memory Usage**
+   ```js
+   // Configure stream buffer size
+   const maxBuffer = 1024 * 1024; // 1MB
+   stream.setMaxListeners(0);
+   stream.setEncoding('utf8');
+   ```
 
----
+### Performance
 
-## Conclusion
+1. **Efficient Filtering**
 
-**Docker stats** (through the CLI or Dockerode) provides **real-time** metrics on CPU, memory, network, and more. The **`cpu_stats`** field indicates how much CPU time your container has consumed relative to the host’s total CPU time. If there’s no CPU limit, usage can exceed “100%” as the container spans multiple cores. Conversely, if you specify `--cpus=2.0` and see `100%`, it means **the container is using 100% of those 2 allocated cores**. Similarly, **memory usage** compares the container’s memory consumption (`usage`) to either an explicit cgroup `limit` or the host’s total memory if no limit is set.
+   ```js
+   // Filter containers efficiently
+   const filters = {
+     status: ['running'],
+     label: ['com.example.monitor=true']
+   };
+   ```
 
-> **Further Reading**
->
-> - [Docker Docs: `docker stats` command reference](https://docs.docker.com/engine/reference/commandline/stats/)
-> - [Docker Docs: Resource Constraints (CPU & Memory)](https://docs.docker.com/config/containers/resource_constraints/)
-> - [Docker Docs: Dockerode usage in Community Tutorials](https://docs.docker.com/engine/api/sdk/)
+2. **Connection Pooling**
+   ```js
+   // Reuse Docker client
+   const docker = new Docker({
+     socketPath: '/var/run/docker.sock',
+     pool: {
+       maxSockets: 10
+     }
+   });
+   ```
 
-Whether you run `docker stats` or call Dockerode’s `container.stats()`, **the data source is the same**: **cgroup** metrics in the Linux kernel—summarized and exposed via Docker’s Remote API.
+## Troubleshooting
+
+### Common Issues
+
+1. **Socket Connection**
+
+   - Check socket path
+   - Verify permissions
+   - Test Docker daemon
+
+2. **Stream Issues**
+   - Monitor memory usage
+   - Check for leaks
+   - Handle backpressure
+
+### Debugging
+
+```js
+// Enable debug logging
+const debug = require('debug')('docker-stats');
+
+debug('Creating stream for container %s', containerId);
+debug('Stats received: %o', stats);
+debug('Error occurred: %o', error);
+```
+
+## Further Reading
+
+- [Docker Engine API](https://docs.docker.com/engine/api/v1.41/)
+- [Dockerode Documentation](https://github.com/apocas/dockerode)
+- [Stream Management](stream.md)

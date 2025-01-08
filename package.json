@@ -4,6 +4,9 @@
   "description": "A service that collects Docker container metrics and stores them in InfluxDB for monitoring and analysis. Supports real-time container stats collection with automatic container discovery.",
   "main": "index.js",
   "type": "module",
+  "exports": {
+    "./types/*": "./src/types/*"
+  },
   "scripts": {
     "lint": "eslint ./",
     "lint:fix": "eslint src --fix",
@@ -20,7 +23,7 @@
     "docker:stop": "docker compose -f docker/docker-compose.yml stop",
     "docker:ps": "docker compose -f docker/docker-compose.yml ps",
     "plantuml:server": "docker run -d -p 9123:8080 --name plantuml-server plantuml/plantuml-server",
-    "jsdocs": "jsdoc -c jsdoc.config.json",
+    "jsdoc": "jsdoc -c jsdoc.config.json",
     "generate:diagrams": "sh ./scripts/generate_diagrams.sh"
   },
   "keywords": [

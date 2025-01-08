@@ -19,9 +19,202 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 4,
+  "id": 2,
   "links": [],
   "panels": [
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influx-docker-stats"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/^Network Out.*$/"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": ["min", "max", "mean", "p95"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.4.0",
+      "targets": [
+        {
+          "alias": "Network In $tag_container_name",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-docker-stats"
+          },
+          "groupBy": [
+            {
+              "params": ["1s"],
+              "type": "time"
+            },
+            {
+              "params": ["container_name::tag"],
+              "type": "tag"
+            },
+            {
+              "params": ["none"],
+              "type": "fill"
+            }
+          ],
+          "measurement": "docker_stats",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "C",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": ["net_in_bytes"],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "sum"
+              },
+              {
+                "params": ["/(1024*1024)"],
+                "type": "math"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "container_name::tag",
+              "operator": "=~",
+              "value": "/^$container_name$/"
+            }
+          ]
+        },
+        {
+          "alias": "Network Out $tag_container_name",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influx-docker-stats"
+          },
+          "groupBy": [
+            {
+              "params": ["1s"],
+              "type": "time"
+            },
+            {
+              "params": ["container_name::tag"],
+              "type": "tag"
+            },
+            {
+              "params": ["none"],
+              "type": "fill"
+            }
+          ],
+          "measurement": "docker_stats",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "D",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": ["net_out_bytes"],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "sum"
+              },
+              {
+                "params": ["/(1024*1024)"],
+                "type": "math"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "container_name::tag",
+              "operator": "=~",
+              "value": "/^$container_name$/"
+            }
+          ]
+        }
+      ],
+      "title": "Network I/O per container",
+      "type": "timeseries"
+    },
     {
       "datasource": {
         "type": "influxdb",
@@ -97,10 +290,10 @@
         ]
       },
       "gridPos": {
-        "h": 21,
+        "h": 16,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 12
       },
       "id": 1,
       "options": {
@@ -199,7 +392,7 @@
                 "type": "max"
               },
               {
-                "params": [" /(1024*1024)"],
+                "params": ["/(1024*1024)"],
                 "type": "math"
               }
             ]
@@ -220,13 +413,13 @@
   "preload": false,
   "refresh": "auto",
   "schemaVersion": 40,
-  "tags": [],
+  "tags": ["influx-docker-stats", "docker", "influx"],
   "templating": {
     "list": [
       {
         "current": {
-          "text": ["http-app"],
-          "value": ["http-app"]
+          "text": "All",
+          "value": ["$__all"]
         },
         "datasource": {
           "type": "influxdb",
@@ -251,13 +444,13 @@
     ]
   },
   "time": {
-    "from": "now-5m",
-    "to": "now"
+    "from": "2025-01-08T07:35:56.295Z",
+    "to": "2025-01-08T07:39:11.989Z"
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Docker Stats Dashboard",
+  "title": "Docker Stats Dashboard v1",
   "uid": "docker-stats-dashboard",
-  "version": 7,
+  "version": 1,
   "weekStart": ""
 }

@@ -21,7 +21,7 @@ docker/**/*_data/
 !docker/**/*.yml
 !docker/**/*.yaml
 !docker/**/*.json
-!docker/config/
+!docker/grafana_config/
 
 # IDE - VSCode
 .vscode/*
@@ -83,7 +83,6 @@ build/
 *.pid.lock
 
 .cursorrules
-.copy
 
 # Docs
 todo.md
@@ -91,3 +90,7 @@ todo.md
 # Make sure we don't ignore these important files
 !LICENSE
 !NOTICE
+
+# Copy
+.copy
+scripts/updateCopyFile.sh
