@@ -1,113 +1,120 @@
-# Getting Started with Docker Stats Service
+# Getting Started
 
-This guide will help you get the Docker Stats Service up and running quickly.
+This guide will help you set up and run the Docker Stats Service.
+
+## Prerequisites
+
+1. **Docker**
+
+   - Docker Engine 20.10.0 or later
+   - Docker Compose v2.0.0 or later
+   - Docker socket accessible
+
+2. **InfluxDB** (optional)
+   - InfluxDB 1.X
+   - Database created for metrics storage
 
 ## Installation
 
-1. **Clone the Repository**
+### Using Docker Compose
 
-   ```bash
-   git clone https://github.com/JoobyPM/docker-stats-service
-   cd docker-stats-service
+1. **Create docker-compose.yml**
+
+   ```yaml
+   version: '3.8'
+   services:
+     docker-stats:
+       image: docker-stats-service
+       environment:
+         - INFLUXDB_HOST=influxdb
+         - INFLUXDB_PORT=8086
+         - INFLUXDB_DB=docker_stats
+         - INFLUXDB_USER=admin
+         - INFLUXDB_PASS=admin
+       volumes:
+         - /var/run/docker.sock:/var/run/docker.sock
+       depends_on:
+         - influxdb
+
+     influxdb:
+       image: influxdb:1.8
+       ports:
+         - '8086:8086'
+       volumes:
+         - influxdb_data:/var/lib/influxdb
+       environment:
+         - INFLUXDB_DB=docker_stats
+         - INFLUXDB_ADMIN_USER=admin
+         - INFLUXDB_ADMIN_PASSWORD=admin
+
+   volumes:
+     influxdb_data:
    ```
 
-2. **Check Prerequisites**
-
-   - Docker 20.10.0 or higher
-   - Docker Compose v2.0.0 or higher
-   - Available ports: 3009 (Grafana), 8086 (InfluxDB)
-
-3. **Start the Service**
+2. **Start Services**
    ```bash
-   docker compose -f docker/docker-compose.yml up -d
+   docker-compose up -d
    ```
 
-## Initial Setup
+## Verification
 
-1. **Access Grafana**
-
-   - Open `http://localhost:3009` in your browser
-   - Login with default credentials:
-     - Username: `admin`
-     - Password: `admin`
-   - You'll be prompted to change the password on first login
-
-2. **Verify Installation**
-   - Check service status:
-     ```bash
-     docker compose -f docker/docker-compose.yml ps
-     ```
-   - View service logs:
-     ```bash
-     docker compose -f docker/docker-compose.yml logs -f
-     ```
-
-## Basic Configuration
-
-### Environment Variables
-
-The service uses these default values:
+### Check Service Status
 
 ```bash
-DOCKER=false               # Set to true if running in Docker
-LOG_LEVEL=info            # Logging level (debug, info, warn, error)
-INFLUXDB_HOST=localhost   # InfluxDB host address
-INFLUXDB_PORT=8086        # InfluxDB port
+# Check container logs
+docker-compose logs -f docker-stats
+
+# Check service status
+docker-compose ps
 ```
 
-See the [Configuration Guide](configuration.md) for all options.
+### Verify Metrics Collection
 
-## First Steps
-
-1. **View Container Metrics**
-
-   - Navigate to Grafana
-   - Open the "Container Overview" dashboard
-   - You should see metrics for all running containers
-
-2. **Start Monitoring New Containers**
-
-   ```bash
-   # Start a test container
-   docker run -d --name test-container nginx
-
-   # View its metrics in Grafana
-   # The container will be automatically detected
-   ```
-
-3. **Check Container Stats**
-   - CPU usage
-   - Memory consumption
-   - Network I/O
-   - Container events
-
-## Next Steps
-
-- Read the [Configuration Guide](configuration.md) for customization options
-- Learn about [Custom Dashboards](guides/custom-dashboards.md)
-- Check [Troubleshooting](troubleshooting.md) if you encounter issues
-- Explore [Advanced Features](guides/metrics-collection.md)
+```bash
+# Using influx CLI
+influx -host localhost -port 8086 -database docker_stats -execute 'SELECT * FROM docker_stats_cpu WHERE time > now() - 5m'
+```
 
 ## Common Issues
 
-1. **No Metrics Showing**
+### Docker Socket Access
 
-   - Verify Docker socket permissions
-   - Check if InfluxDB is running
-   - Ensure containers are running
+```bash
+# Check socket permissions
+ls -l /var/run/docker.sock
 
-2. **Cannot Access Grafana**
+# Fix permissions if needed
+sudo chmod 666 /var/run/docker.sock
+```
 
-   - Verify port 3009 is available
-   - Check if Grafana container is running
-   - Review service logs
+### InfluxDB Connection
 
-3. **Linux Users**
-   - If using Docker mode, set `INFLUXDB_HOST` to your host's Docker bridge IP
-   - Default `host.docker.internal` doesn't work on Linux
+```bash
+# Test InfluxDB connection
+curl -I http://localhost:8086/ping
 
-## Getting Help
+# Check database
+influx -host localhost -port 8086 -execute 'SHOW DATABASES'
+```
 
-- Check the [FAQ](faq.md)
-- Review [Troubleshooting Guide](troubleshooting.md)
-- Open an issue on GitHub
+## Next Steps
+
+1. **Configuration**
+
+   - Review [Configuration Guide](configuration.md)
+   - Adjust settings for your environment
+
+2. **Monitoring**
+
+   - Set up monitoring tools
+   - Configure alerts
+
+3. **Integration**
+   - Add to existing stack
+   - Configure logging
+
+## Further Reading
+
+- [Configuration Guide](configuration.md)
+- [Stream Management](guides/stream.md)
+- [Error Handling](reference/error-handling.md)

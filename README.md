@@ -4,14 +4,38 @@ A lightweight service for real-time Docker container metrics collection and stor
 
 ## Key Features
 
-- **Real-Time Metrics**: Continuous streaming of container stats via Docker's native API
-- **Automatic Discovery**: Dynamic container detection and monitoring
-- **Development Focused**: Optimized for local environments and testing scenarios
-- **Pre-Configured Visualization**: Ready-to-use Grafana dashboards
-- **Efficient Processing**: Smart batching and stream management
-- **Simple Integration**: Works with both local and Docker environments
+- **Real-Time Monitoring**
+
+  - Continuous streaming of container stats via Docker's native API
+  - Automatic container discovery and monitoring
+  - Stream-based collection with automatic recovery
+  - Memory-efficient stream management
+
+- **Robust Data Processing**
+
+  - Efficient metrics batching and buffering
+  - Automatic retry mechanisms for resilience
+  - Comprehensive error handling
+  - Smart backpressure handling
+
+- **Flexible Configuration**
+
+  - Environment-based configuration
+  - Debug mode for troubleshooting
+  - Configurable batch sizes and intervals
+  - Adjustable retry policies
+
+- **Easy Integration**
+  - Docker Compose deployment support
+  - Native Docker socket integration via Dockerode
+  - InfluxDB 1.X integration for metrics storage
+  - Pre-configured Grafana dashboards
 
 [📚 Read the full documentation](docs/index.md)
+
+### Example Dashboard
+
+![Dashboard Exemplae](docs/assets/docker-stats-dashboard-v1.example.png)
 
 ## Quick Start
 
@@ -51,7 +75,7 @@ For local development:
    - Add dashboards to `docker/grafana_config/dashboards/`
    - Restart Grafana: `pnpm docker:restart grafana`
 
-3. **Development**
+3. **Development Mode**
 
    ```bash
    # Local development
@@ -60,6 +84,36 @@ For local development:
 
    # With debug logging
    LOG_LEVEL=debug pnpm start
+
+   # Enable specific debug patterns
+   DEBUG=docker-stats:stream,docker-stats:events pnpm start
+   ```
+
+4. **Troubleshooting**
+
+   ```bash
+   # Check service status
+   docker compose -f docker/docker-compose.yml ps
+
+   # View detailed logs
+   docker compose -f docker/docker-compose.yml logs -f docker-stats
+
+   # Monitor resource usage
+   docker stats docker-stats-service
+   ```
+
+5. **Advanced Configuration**
+
+   ```bash
+   # Optimize for high throughput
+   export BATCH_SIZE=200
+   export BATCH_WAIT_MS=5000
+
+   # Enable automatic recovery
+   export INFLUXDB_RETRY_MAX=10
+   export INFLUXDB_RETRY_DELAY=2000
+
+   pnpm start
    ```
 
 ## Documentation
@@ -68,7 +122,6 @@ For local development:
 - [Configuration Guide](docs/configuration.md)
 - [Architecture Overview](docs/architecture/README.md)
 - [Troubleshooting Guide](docs/troubleshooting.md)
-- [API Documentation](docs/api/README.md)
 
 ## Contributing
 
@@ -78,7 +131,7 @@ For local development:
 4. Push to the branch: `git push origin feature/amazing-feature`
 5. Open a Pull Request
 
-See our [Contributing Guide](docs/contributing.md) for detailed guidelines.
+See our [Contributing Guide](docs/guides/index.md) for detailed guidelines.
 
 ## License
 

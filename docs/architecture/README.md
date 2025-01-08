@@ -1,154 +1,203 @@
 # Architecture Overview
 
-The Docker Stats Service follows a modular architecture designed for reliability and efficient metrics collection.
+This document provides a comprehensive overview of the Docker Stats Service architecture.
+
+## High-Level Data Flow
+
+1. **Docker Events** → 2. **Container Watcher & Stream Manager** → 3. **Metrics Handler & Batcher** → 4. **InfluxDB**
+
+### 1. Docker Events
+
+- Docker's native event streaming API provides real-time notifications about container lifecycle events such as `start` and `stop`
+- The `Event Monitor` (located in `src/services/docker/events.mjs`) listens for these events and orchestrates updates to the `Container Watcher`
+- Handles common and edge cases, including scenarios like rapid restarts, duplicate events, and unexpected termination
+
+### 2. Container Watcher & Stream Manager
+
+- The `Container Watcher` (`src/services/docker/containers.mjs`) manages container discovery and monitoring
+  - For each active container, it initializes a stats stream
+- The `Stream Manager` (`src/services/docker/stream-manager.mjs`) handles the concurrency and lifecycle of these stats streams
+  - Handles backpressure, streaming errors, and reconnections
+
+### 3. Metrics Handler & Batcher
+
+- The `Metrics Handler` (`src/services/metrics/handler.mjs`) processes parsed container metrics (CPU, memory, network)
+- Metrics are batched using an optimized mechanism to minimize write operations while maintaining real-time responsiveness
+- Error handling and retry mechanisms ensure data integrity during transient failures
+
+### 4. InfluxDB
+
+- Parsed metrics are transformed to ensure proper formatting and structure
+- Each data point includes fields like `cpu_percent` and `mem_used`, and tags for container identification
 
 ## System Components
 
-![System Overview](diagrams/overview.svg)
-
 ### Core Components
 
-1. **Event Monitor** (`events.mjs`)
+1. **Event Monitor**
 
-   - Listens to Docker container lifecycle events
+   - Listens for Docker events
+   - Detects container lifecycle changes
    - Forwards events to Container Watcher
-   - Provides basic event logging
 
-2. **Container Watcher** (`containers.mjs`)
+2. **Container Watcher**
 
-   - Maintains container state
-   - Coordinates container monitoring
-   - Manages stream creation/removal
-   - Handles container discovery
+   - Manages container monitoring
+   - Coordinates with Stream Manager
+   - Handles container state
 
-3. **Stream Manager** (`stream-manager.mjs`)
+3. **Stream Manager**
 
    - Creates and manages stats streams
-   - Handles stream errors and cleanup
-   - Implements backpressure handling
-   - Ensures proper stream lifecycle
+   - Handles stream lifecycle
+   - Implements error recovery
 
-4. **Stats Parser** (`stats-parser.mjs`)
+4. **Stats Parser**
 
-   - Processes raw Docker stats
-   - Handles data normalization
-   - Validates stats format
+   - Processes raw stats data
+   - Validates JSON format
+   - Transforms metrics
 
-5. **Metrics Handler** (`metrics/handler.mjs`)
-   - Batches metrics for storage
+5. **Metrics Handler**
+   - Batches metrics
    - Manages InfluxDB writes
-   - Implements retry logic
+   - Handles backpressure
 
-## Data Flow
-
-![Metrics Flow](diagrams/metrics_flow.puml)
-
-### Collection Process
-
-1. **Container Discovery**
-
-   ```
-   Docker Event → Event Monitor → Container Watcher → Stream Creation
-   ```
-
-2. **Stats Collection**
-
-   ```
-   Docker Stats Stream → Stream Manager → Stats Parser → Metrics Handler
-   ```
-
-3. **Storage Flow**
-   ```
-   Metrics Handler → Batch Processing → InfluxDB Write
-   ```
-
-## Component Interactions
-
-![Component Architecture](diagrams/components.puml)
-
-### Key Interactions
-
-1. **Event Handling**
-
-   - Docker events trigger container monitoring
-   - Container Watcher manages stream lifecycle
-   - Clean shutdown on container stop
-
-2. **Stream Management**
-
-   - One stream per container
-   - Automatic recovery on errors
-   - Proper resource cleanup
-
-3. **Data Processing**
-   - Continuous stats streaming
-   - Efficient batch processing
-   - Reliable storage
-
-## Design Principles
-
-### 1. Modularity
-
-- Clear separation of concerns
-- Independent components
-- Well-defined interfaces
-- Easy to test and maintain
-
-### 2. Reliability
-
-- Automatic error recovery
-- Proper resource cleanup
-- Graceful degradation
-- Robust error handling
-
-### 3. Efficiency
-
-- Native Docker streaming
-- Smart batching
-- Resource management
-- Minimal overhead
-
-## Implementation Details
-
-### Stream States
+## Data Flow Diagram
 
 ```
-[Container Start] → STARTING → ACTIVE → STOPPING → STOPPED
-       ↑              ↓         ↓
-       └──────────────┴─────────┘
-        (Auto-retry on error)
+                   ┌─────────────┐
+                   │  Docker API │
+                   └─────────────┘
+                         │
+                         ▼
+┌─────────────┐   ┌─────────────┐
+│    Event    │──▶│  Container  │
+│   Monitor   │   │   Watcher   │
+└─────────────┘   └─────────────┘
+                         │
+                         ▼
+                  ┌─────────────┐
+                  │   Stream    │
+                  │   Manager   │
+                  └─────────────┘
+                         │
+                         ▼
+┌─────────────┐   ┌─────────────┐
+│    Stats    │◀──│    Stats    │
+│   Parser    │   │   Stream    │
+└─────────────┘   └─────────────┘
+       │
+       ▼
+┌─────────────┐
+│   Metrics   │
+│   Handler   │
+└─────────────┘
+       │
+       ▼
+┌─────────────┐
+│  InfluxDB   │
+└─────────────┘
 ```
 
-### Batch Processing
+## Module Organization
 
-```
-[Container Stats] → [Memory Batch] → [InfluxDB Write]
-        ↑               ↓
-  [New Points]    [Success/Retry]
-```
-
-## Code Organization
+### Service Structure
 
 ```
 src/
 ├── services/
-│   ├── docker/          # Docker interaction
+│   ├── docker/
 │   │   ├── events.mjs
 │   │   ├── containers.mjs
 │   │   ├── stream-manager.mjs
 │   │   ├── stats-parser.mjs
 │   │   └── validation.mjs
-│   └── metrics/         # Metrics handling
-│       ├── handler.mjs
-│       └── transformer.mjs
-├── utils/              # Shared utilities
-├── types/              # Type definitions
-└── config/             # Configuration
+│   └── metrics/
+│       └── handler.mjs
+├── types/
+│   └── index.jsdoc.mjs
+├── config/
+│   └── index.mjs
+└── utils/
+    └── index.mjs
 ```
+
+## Design Patterns
+
+### Event-Driven Architecture
+
+1. **Event Handling**
+
+   - Asynchronous processing
+   - Event propagation
+   - State management
+
+2. **Stream Processing**
+   - Reactive streams
+   - Backpressure handling
+   - Error recovery
+
+### Modular Design
+
+1. **Service Separation**
+
+   - Clear boundaries
+   - Single responsibility
+   - Loose coupling
+
+2. **Component Isolation**
+   - Independent scaling
+   - Focused testing
+   - Easy maintenance
+
+## Error Handling
+
+### Recovery Strategies
+
+1. **Stream Errors**
+
+   - Automatic retry
+   - Graceful degradation
+   - State recovery
+
+2. **Storage Errors**
+   - Write retries
+   - Batch recovery
+   - Data integrity
+
+## Performance
+
+### Optimization Strategies
+
+1. **Resource Management**
+
+   - Memory efficiency
+   - Connection pooling
+   - Stream buffering
+
+2. **Batch Processing**
+   - Efficient writes
+   - Optimal batch size
+   - Write scheduling
+
+## Security
+
+### Access Control
+
+1. **Docker Socket**
+
+   - Minimal permissions
+   - Secure mounting
+   - Access validation
+
+2. **InfluxDB**
+   - Token authentication
+   - Secure storage
+   - Connection encryption
 
 ## Further Reading
 
-- [Component Details](components.md)
-- [Data Flow Details](data-flow.md)
-- [Error Handling](../reference/error-handling.md)
-- [Metrics Schema](../reference/metrics-schema.md)
+- [Stream Management](../guides/stream.md)
+- [Configuration](../configuration.md)
+- [Troubleshooting](../troubleshooting.md)

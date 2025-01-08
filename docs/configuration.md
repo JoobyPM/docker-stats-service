@@ -1,160 +1,201 @@
 # Configuration Guide
 
-This guide covers all configuration options for the Docker Stats Service.
+This guide details all configuration options available in the Docker Stats Service.
 
 ## Environment Variables
 
+### Logging and Runtime Settings
+
+| Variable              | Description                           | Default | Required |
+| --------------------- | ------------------------------------- | ------- | -------- |
+| `LOG_LEVEL`           | Logging verbosity level               | `info`  | No       |
+| `DEBUG`               | Debug patterns for detailed logging   | -       | No       |
+| `SHUTDOWN_TIMEOUT_MS` | Maximum time for graceful shutdown    | `10000` | No       |
+| `DOCKER`              | Whether running in Docker environment | `false` | No       |
+
+Supported `LOG_LEVEL` values:
+
+- `trace` - Most verbose logging
+- `debug` - Detailed debugging information
+- `info` - General operational information
+- `warn` - Warning messages
+- `error` - Error messages only
+- `silent` - No logging output
+
+Debug patterns for `DEBUG`:
+
+- `docker-stats:*` - All debug logs
+- `docker-stats:stream` - Stream-related logs only
+- `docker-stats:events` - Docker events logs only
+
 ### Core Settings
 
-| Variable             | Description                   | Default                | Required |
-| -------------------- | ----------------------------- | ---------------------- | -------- |
-| `DOCKER`             | Running in Docker environment | `false`                | No       |
-| `LOG_LEVEL`          | Logging verbosity             | `info`                 | No       |
-| `DOCKER_SOCKET_PATH` | Path to Docker socket         | `/var/run/docker.sock` | No       |
+| Variable              | Description                               | Default                | Required |
+| --------------------- | ----------------------------------------- | ---------------------- | -------- |
+| `DOCKER_SOCKET_PATH`  | Path to Docker socket                     | `/var/run/docker.sock` | No       |
+| `STATS_BUFFER_SIZE`   | Size of stats stream buffer in bytes      | `1048576`              | No       |
+| `STATS_LINE_SIZE`     | Maximum size of a single stats line       | `102400`               | No       |
+| `STATS_PARSE_TIMEOUT` | Timeout for parsing stats in milliseconds | `30000`                | No       |
 
-### InfluxDB Configuration
+### InfluxDB Configuration (v1.X)
 
-| Variable            | Description       | Default                                 | Required |
-| ------------------- | ----------------- | --------------------------------------- | -------- |
-| `INFLUXDB_HOST`     | InfluxDB host     | `localhost` or `host.docker.internal`\* | No       |
-| `INFLUXDB_PORT`     | InfluxDB port     | `8086`                                  | No       |
-| `INFLUXDB_PROTOCOL` | InfluxDB protocol | `http`                                  | No       |
-| `INFLUXDB_USER`     | InfluxDB username | `admin`                                 | No       |
-| `INFLUXDB_PASS`     | InfluxDB password | `admin`                                 | No       |
-| `INFLUXDB_DB`       | Database name     | `docker-stats`                          | No       |
+| Variable                   | Description                    | Default        | Required |
+| -------------------------- | ------------------------------ | -------------- | -------- |
+| `INFLUXDB_HOST`            | InfluxDB server host           | `localhost`    | No       |
+| `INFLUXDB_PORT`            | InfluxDB server port           | `8086`         | No       |
+| `INFLUXDB_PROTOCOL`        | InfluxDB protocol (http/https) | `http`         | No       |
+| `INFLUXDB_USER`            | InfluxDB username              | `admin`        | No       |
+| `INFLUXDB_PASS`            | InfluxDB password              | `admin`        | No       |
+| `INFLUXDB_DB`              | InfluxDB database name         | `docker-stats` | No       |
+| `INFLUXDB_RETRY_MAX`       | Maximum retry attempts         | `5`            | No       |
+| `INFLUXDB_RETRY_DELAY`     | Initial retry delay in ms      | `1000`         | No       |
+| `INFLUXDB_RETRY_MAX_DELAY` | Maximum retry delay in ms      | `10000`        | No       |
 
-\*Defaults to `host.docker.internal` when `DOCKER=true`
+### Metrics Configuration
 
-### Performance Tuning
-
-| Variable            | Description              | Default   | Required |
-| ------------------- | ------------------------ | --------- | -------- |
-| `BATCH_SIZE`        | Max points per batch     | `100`     | No       |
-| `BATCH_WAIT_MS`     | Max batch wait time      | `2000`    | No       |
-| `STATS_BUFFER_SIZE` | Stats stream buffer size | `1048576` | No       |
-| `STATS_LINE_SIZE`   | Max stats line size      | `102400`  | No       |
-
-### Error Handling
-
-| Variable                   | Description               | Default | Required |
-| -------------------------- | ------------------------- | ------- | -------- |
-| `INFLUXDB_RETRY_MAX`       | Max retry attempts        | `5`     | No       |
-| `INFLUXDB_RETRY_DELAY`     | Initial retry delay (ms)  | `1000`  | No       |
-| `INFLUXDB_RETRY_MAX_DELAY` | Max retry delay (ms)      | `10000` | No       |
-| `SHUTDOWN_TIMEOUT_MS`      | Graceful shutdown timeout | `10000` | No       |
-| `STATS_PARSE_TIMEOUT`      | Stats parsing timeout     | `30000` | No       |
+| Variable         | Description                    | Default        | Required |
+| ---------------- | ------------------------------ | -------------- | -------- |
+| `BATCH_SIZE`     | Maximum points per batch       | `100`          | No       |
+| `BATCH_WAIT_MS`  | Maximum wait time before flush | `2000`         | No       |
+| `METRICS_PREFIX` | Prefix for all metrics         | `docker_stats` | No       |
 
 ## Docker Configuration
 
-### Docker Compose
+### Socket Access
 
-Example `docker-compose.yml`:
+The service requires access to the Docker socket. There are several ways to provide this access securely:
 
-```yaml
-version: '3.8'
-services:
-  docker-stats:
-    image: docker-stats-service
-    environment:
-      - DOCKER=true
-      - LOG_LEVEL=info
-      - INFLUXDB_HOST=influxdb
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      - influxdb
-```
+1. **For Local Development**
 
-### Docker Socket Access
+   Add your user to the `docker` group (preferred over changing socket permissions):
 
-The service requires access to the Docker socket:
+   ```bash
+   # Add current user to docker group
+   sudo usermod -aG docker $USER
 
-1. **Socket Mounting**
+   # Apply changes (requires logout/login or run this command)
+   newgrp docker
+
+   # Verify access
+   docker ps
+   ```
+
+2. **For Container Deployment**
+
+   Use the Docker socket mount with appropriate user/group:
 
    ```yaml
-   volumes:
-     - /var/run/docker.sock:/var/run/docker.sock
+   version: '3.8'
+   services:
+     docker-stats:
+       image: docker-stats-service
+       volumes:
+         - /var/run/docker.sock:/var/run/docker.sock
+       # Optional: Run as specific user/group that has Docker access
+       user: '${UID}:${GID}'
    ```
 
-2. **Permissions**
+> **Security Note**:
+>
+> - Only add users to the docker group who need to access Docker, as this grants significant system privileges
+> - In production environments, consider using rootless Docker or a more restrictive security model
+> - Avoid changing socket permissions (chmod) as it can introduce security risks
+
+## Grafana Dashboard Configuration
+
+### Default Dashboards
+
+The service comes with pre-configured dashboards located in `docker/grafana_config/dashboards/`:
+
+```
+docker/grafana_config/dashboards/
+└── docker-stats-dashboard.json    # Main container stats
+```
+
+### Adding Custom Dashboards
+
+1. **Export Your Dashboard**
+
+   - In Grafana UI, click Share Dashboard → Export
+   - Select "Export for sharing externally"
+   - Save as JSON file
+
+2. **Install New Dashboard**
 
    ```bash
-   # Check permissions
-   ls -l /var/run/docker.sock
+   # Copy your dashboard JSON
+   cp your-dashboard.json docker/grafana_config/dashboards/
 
-   # Fix if needed
-   sudo chmod 666 /var/run/docker.sock
+   # Restart Grafana to load new dashboard
+   docker compose -f docker/docker-compose.yml restart grafana
    ```
 
-## Local Development
+3. **Dashboard Naming**
+   - Use descriptive filenames (e.g., `network-metrics-dashboard.json`)
+   - Ensure `.json` extension
+   - Avoid spaces in filenames
 
-For local development:
+### Customizing Dashboards
 
-1. **Environment File**
-   Create `.env` in project root:
+1. **Data Source Configuration**
 
+   ```json
+   {
+     "datasource": {
+       "type": "influxdb",
+       "uid": "influx-docker-stats"
+     }
+   }
+   ```
+
+2. **Available Metrics**
+
+   ```sql
+   -- CPU Usage
+   FROM "docker_stats_cpu" WHERE container_name = '$container'
+
+   -- Memory Usage
+   FROM "docker_stats_memory" WHERE container_name = '$container'
+
+   -- Network I/O
+   FROM "docker_stats_network" WHERE container_name = '$container'
+   ```
+
+3. **Variables**
+   - `$container`: Container name
+   - `$interval`: Time interval
+   - `$host`: Host system
+
+### Auto-Provisioning
+
+Dashboards are automatically provisioned through Docker Compose:
+
+```yaml
+services:
+  grafana:
+    volumes:
+      - ./grafana_config/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana_config/datasources:/etc/grafana/provisioning/datasources
+```
+
+> **Note**: Changes to dashboard JSON files require a Grafana restart to take effect.
+
+### Best Practices
+
+1. **Version Control**
+
+   - Keep dashboard JSONs in version control
+   - Document dashboard changes in commit messages
+   - Include screenshots for visual changes
+
+2. **Organization**
+
+   - Use folders for different dashboard types
+   - Follow consistent naming conventions
+   - Include README in dashboard directory
+
+3. **Backup**
    ```bash
-   LOG_LEVEL=debug
-   INFLUXDB_HOST=localhost
+   # Backup all dashboards
+   cp -r docker/grafana_config/dashboards/ backup/dashboards-$(date +%Y%m%d)
    ```
-
-2. **Development Settings**
-
-   ```bash
-   # Start with debug logging
-   LOG_LEVEL=debug pnpm start
-
-   # Custom InfluxDB connection
-   INFLUXDB_HOST=custom.host pnpm start
-   ```
-
-## Advanced Configuration
-
-### Metrics Batching
-
-The service implements efficient metrics batching:
-
-1. **Batch Size**
-
-   - Larger `BATCH_SIZE` = more memory, fewer writes
-   - Smaller `BATCH_SIZE` = less memory, more writes
-
-2. **Batch Timing**
-   - `BATCH_WAIT_MS` controls maximum wait time
-   - Batches flush on size or time limit
-
-### Error Recovery
-
-Configure retry behavior:
-
-1. **Retry Settings**
-
-   - `INFLUXDB_RETRY_MAX`: Maximum attempts
-   - `INFLUXDB_RETRY_DELAY`: Initial delay
-   - `INFLUXDB_RETRY_MAX_DELAY`: Maximum delay
-
-2. **Timeouts**
-   - `SHUTDOWN_TIMEOUT_MS`: Graceful shutdown
-   - `STATS_PARSE_TIMEOUT`: Stats processing
-
-## Best Practices
-
-1. **Production Settings**
-
-   - Use explicit host configurations
-   - Set appropriate batch sizes
-   - Configure proper timeouts
-   - Enable error retries
-
-2. **Development Settings**
-
-   - Enable debug logging
-   - Use smaller batch sizes
-   - Reduce timeouts
-   - Configure local hosts
-
-3. **Resource Considerations**
-   - Monitor memory usage
-   - Adjust batch settings
-   - Watch for timeouts
-   - Check error rates
