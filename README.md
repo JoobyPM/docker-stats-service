@@ -21,9 +21,9 @@ A lightweight service for real-time Docker container metrics collection and stor
 - **Flexible Configuration**
 
   - Environment-based configuration
-  - Debug mode for troubleshooting
-  - Configurable batch sizes and intervals
-  - Adjustable retry policies
+  - Configurable metrics collection (all, essential, or custom fields)
+  - Adjustable batch sizes and intervals
+  - Fine-tuned retry policies
 
 - **Easy Integration**
   - Docker Compose deployment support
@@ -35,7 +35,7 @@ A lightweight service for real-time Docker container metrics collection and stor
 
 ### Example Dashboard
 
-![Dashboard Exemplae](docs/assets/docker-stats-dashboard-v1.example.png)
+![Dashboard Example](docs/assets/docker-stats-dashboard-v1.example.png)
 
 ## Quick Start
 
@@ -44,8 +44,14 @@ A lightweight service for real-time Docker container metrics collection and stor
 git clone https://github.com/JoobyPM/docker-stats-service
 cd docker-stats-service
 
-# Start all services
+# Start all services (collects all metrics by default)
 docker compose -f docker/docker-compose.yml up -d
+
+# Or start with essential metrics only (CPU, memory, network)
+STATS_FIELDS=ESSENTIAL docker compose -f docker/docker-compose.yml up -d
+
+# Or start with custom metrics selection
+STATS_FIELDS=cpu_percent,mem_used,blkio_read_bytes docker compose -f docker/docker-compose.yml up -d
 
 # Access Grafana dashboard
 open http://localhost:3009  # Login with admin/admin
@@ -78,9 +84,21 @@ For local development:
 3. **Development Mode**
 
    ```bash
-   # Local development
+   # Local development with all metrics
    pnpm install
    pnpm start
+
+   # With essential metrics only (CPU, memory, network)
+   STATS_FIELDS=ESSENTIAL pnpm start
+
+   # With custom metrics selection
+   STATS_FIELDS=cpu_percent,mem_used,pids_current pnpm start
+
+   # Example: Network-focused monitoring
+   STATS_FIELDS=net_in_bytes,net_out_bytes,net_eth0_in_packets pnpm start
+
+   # Example: Memory analysis
+   STATS_FIELDS=mem_used,mem_cache,mem_active_anon,mem_pgfault pnpm start
 
    # With debug logging
    LOG_LEVEL=debug pnpm start
@@ -112,6 +130,9 @@ For local development:
    # Enable automatic recovery
    export INFLUXDB_RETRY_MAX=10
    export INFLUXDB_RETRY_DELAY=2000
+
+   # Select specific metrics to collect
+   export STATS_FIELDS=cpu_percent,mem_used,blkio_read_bytes
 
    pnpm start
    ```

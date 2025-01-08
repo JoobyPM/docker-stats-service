@@ -1,6 +1,6 @@
 {
   "name": "docker-stats-service",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A service that collects Docker container metrics and stores them in InfluxDB for monitoring and analysis. Supports real-time container stats collection with automatic container discovery.",
   "main": "index.js",
   "type": "module",

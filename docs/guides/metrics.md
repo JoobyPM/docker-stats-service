@@ -15,7 +15,7 @@ This guide explains how the Docker Stats Service collects and processes containe
 2. **Processing Pipeline**
 
    ```
-   Raw Stats → Parse → Validate → Transform → Batch → Store
+   Raw Stats → Parse → Transform → Batch → Store
    ```
 
 3. **Data Flow**
@@ -25,76 +25,92 @@ This guide explains how the Docker Stats Service collects and processes containe
 
 ## Metric Types
 
-### Resource Metrics
+All metrics are stored in a single measurement named `docker_stats` with the following structure:
 
-1. **CPU Usage**
-
-   ```
-   {
-     measurement: 'cpu',
-     tags: {
-       container_id: 'abc123',
-       container_name: 'web-1'
-     },
-     fields: {
-       usage_percent: 45.2,
-       system_percent: 12.8,
-       user_percent: 32.4
-     }
-   }
-   ```
-
-2. **Memory Usage**
-   ```
-   {
-     measurement: 'memory',
-     tags: {
-       container_id: 'abc123',
-       container_name: 'web-1'
-     },
-     fields: {
-       usage_bytes: 1024576,
-       limit_bytes: 2097152,
-       usage_percent: 48.9
-     }
-   }
-   ```
-
-### Network Metrics
+### Tags
 
 ```
 {
-  measurement: 'network',
-  tags: {
-    container_id: 'abc123',
-    container_name: 'web-1',
-    interface: 'eth0'
-  },
-  fields: {
-    rx_bytes: 1024,
-    tx_bytes: 512,
-    rx_packets: 42,
-    tx_packets: 21
-  }
+  container_id: "abc123",              // Container ID
+  container_name: "web-1"              // Container name
 }
 ```
 
-### Block I/O Metrics
+### Fields
+
+#### CPU Metrics
 
 ```
 {
-  measurement: 'blockio',
-  tags: {
-    container_id: 'abc123',
-    container_name: 'web-1',
-    device: '/dev/sda1'
-  },
-  fields: {
-    read_bytes: 4096,
-    write_bytes: 8192,
-    read_ops: 2,
-    write_ops: 4
-  }
+  cpu_percent: 45.2,                    // CPU usage percentage
+  cpu_total_usage: 406981000,           // Total CPU usage in nanoseconds
+  cpu_system_usage: 2800680000000,      // System CPU usage in nanoseconds
+  cpu_online: 16,                       // Number of online CPUs
+  cpu_usage_in_kernelmode: 51890000,    // CPU usage in kernel mode
+  cpu_usage_in_usermode: 355091000,     // CPU usage in user mode
+  cpu_throttling_periods: 11,           // Number of throttling periods
+  cpu_throttled_periods: 8,             // Number of periods where CPU was throttled
+  cpu_throttled_time: 584099000         // Total time CPU was throttled
+}
+```
+
+#### Memory Metrics
+
+```
+{
+  mem_used: 80269312,                   // Current memory usage in bytes
+  mem_total: 268435456,                 // Memory limit in bytes
+  mem_active_anon: 75771904,            // Active anonymous memory
+  mem_inactive_anon: 0,                 // Inactive anonymous memory
+  mem_active_file: 0,                   // Active file-backed memory
+  mem_inactive_file: 0,                 // Inactive file-backed memory
+  mem_unevictable: 0,                   // Memory that cannot be reclaimed
+  mem_pgfault: 12345,                   // Number of page faults
+  mem_pgmajfault: 0                     // Number of major page faults
+}
+```
+
+#### Network Metrics
+
+```
+{
+  net_in_bytes: 1574,                   // Total bytes received
+  net_out_bytes: 568,                   // Total bytes transmitted
+  net_eth0_in_bytes: 1574,              // Bytes received on eth0
+  net_eth0_out_bytes: 568,              // Bytes transmitted on eth0
+  net_eth0_in_packets: 14,              // Packets received on eth0
+  net_eth0_out_packets: 7,              // Packets transmitted on eth0
+  net_eth0_in_errors: 0,                // Receive errors on eth0
+  net_eth0_out_errors: 0,               // Transmit errors on eth0
+  net_eth0_in_dropped: 0,               // Packets dropped on receive (eth0)
+  net_eth0_out_dropped: 0               // Packets dropped on transmit (eth0)
+}
+```
+
+#### Block I/O Metrics
+
+```
+{
+  blkio_read_bytes: 4096,               // Total bytes read from disk
+  blkio_write_bytes: 8192               // Total bytes written to disk
+}
+```
+
+#### Process Metrics
+
+```
+{
+  pids_current: 22,                     // Current number of processes
+  num_procs: 22                         // Total number of processes
+}
+```
+
+#### Timestamp Metrics
+
+```
+{
+  read_time: 1642612345000,             // Current stats collection timestamp
+  preread_time: 1642612344000           // Previous stats collection timestamp
 }
 ```
 
@@ -106,9 +122,8 @@ This guide explains how the Docker Stats Service collects and processes containe
 
    ```js
    const batchConfig = {
-     size: 1000, // Points per batch
-     intervalMs: 10000, // Flush interval
-     retries: 3 // Write retries
+     size: process.env.BATCH_SIZE || 100, // Points per batch
+     waitMs: process.env.BATCH_WAIT_MS || 2000 // Flush interval
    };
    ```
 
@@ -126,9 +141,9 @@ This guide explains how the Docker Stats Service collects and processes containe
    - Monitor memory
 
 2. **Flushing**
-   - Time-based flush
-   - Size-based flush
-   - Manual flush
+   - Time-based flush (every `BATCH_WAIT_MS` milliseconds)
+   - Size-based flush (when batch reaches `BATCH_SIZE` points)
+   - Manual flush on shutdown
 
 ## Performance Optimization
 
@@ -136,27 +151,27 @@ This guide explains how the Docker Stats Service collects and processes containe
 
 1. **Batch Size**
 
-   - Optimal point count
-   - Memory usage
-   - Network efficiency
+   - Default: 100 points
+   - Configurable via `BATCH_SIZE`
+   - Balance between memory and write frequency
 
 2. **Flush Timing**
-   - Latency vs throughput
-   - Resource usage
-   - Data freshness
+   - Default: 2000ms
+   - Configurable via `BATCH_WAIT_MS`
+   - Balance between latency and throughput
 
 ### Resource Usage
 
 1. **Memory**
 
-   - Buffer allocation
-   - Batch size limits
-   - Cleanup strategy
+   - Efficient point format
+   - Regular flushing
+   - Backpressure handling
 
 2. **Network**
-   - Connection pooling
-   - Compression
-   - Retry handling
+   - Batched writes
+   - Connection reuse
+   - Error handling with retries
 
 ## Best Practices
 
@@ -164,30 +179,24 @@ This guide explains how the Docker Stats Service collects and processes containe
 
 1. **Batch Size**
 
-   ```js
-   // High-throughput settings
-   const config = {
-     batchSize: 5000, // Larger batches
-     flushInterval: 5000, // Faster flush
-     compression: true // Enable compression
-   };
+   ```bash
+   # High-throughput settings
+   export BATCH_SIZE=500
+   export BATCH_WAIT_MS=5000
    ```
 
 2. **Resource Limits**
-   ```js
-   // Resource constraints
-   const limits = {
-     maxBatchSize: 10000,
-     maxBufferSize: '50MB',
-     maxRetries: 5
-   };
+   ```bash
+   # Memory-constrained environments
+   export BATCH_SIZE=50
+   export BATCH_WAIT_MS=1000
    ```
 
 ### Monitoring
 
 1. **Batch Metrics**
 
-   - Batch sizes
+   - Points per batch
    - Flush frequency
    - Write success rate
 
@@ -207,9 +216,9 @@ This guide explains how the Docker Stats Service collects and processes containe
    - Monitor buffer usage
 
 2. **Write Failures**
-   - Check connectivity
+   - Check InfluxDB connection
    - Verify permissions
-   - Adjust retry settings
+   - Check error logs
 
 ### Performance Issues
 
@@ -217,15 +226,16 @@ This guide explains how the Docker Stats Service collects and processes containe
 
    - Optimize batch size
    - Adjust flush interval
-   - Check network
+   - Check network connectivity
 
 2. **Resource Usage**
-   - Monitor memory
-   - Check CPU usage
+   - Monitor memory usage
+   - Check CPU utilization
    - Verify network capacity
 
 ## Further Reading
 
+- [Metrics Schema Reference](../reference/metrics-schema.md)
+- [Configuration Guide](../configuration.md)
 - [Stream Management](stream.md)
 - [Error Handling](../reference/error-handling.md)
-- [InfluxDB Line Protocol](https://docs.influxdata.com/influxdb/v2.7/reference/syntax/line-protocol/)

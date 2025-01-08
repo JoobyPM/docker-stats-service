@@ -8,7 +8,7 @@ This guide outlines the development workflow and best practices for contributing
 
 1. **Node.js**
 
-   - Version 18 or later
+   - Version 21 or later
    - pnpm package manager
 
 2. **Docker**
@@ -27,7 +27,7 @@ This guide outlines the development workflow and best practices for contributing
 1. **Clone Repository**
 
    ```bash
-   git clone https://github.com/your-org/docker-stats-service.git
+   git clone https://github.com/JoobyPM/docker-stats-service.git
    cd docker-stats-service
    ```
 
@@ -42,7 +42,7 @@ This guide outlines the development workflow and best practices for contributing
    ```bash
    # Create .env file
    cat > .env << EOL
-   # InfluxDB settings (v1.X)
+   # InfluxDB settings (v1.8)
    INFLUXDB_HOST=localhost
    INFLUXDB_PORT=8086
    INFLUXDB_PROTOCOL=http
@@ -68,15 +68,13 @@ src/
 ├── config/            # Configuration
 └── utils/             # Shared utilities
 
-test/
-├── unit/             # Unit tests
-├── integration/      # Integration tests
-└── fixtures/         # Test fixtures
-
 docs/
 ├── guides/           # User guides
 ├── reference/        # API reference
 └── architecture/     # Architecture docs
+
+docker/               # Docker compose files
+└── grafana_config/   # Grafana configuration
 ```
 
 ## Development Workflow
@@ -108,32 +106,16 @@ docs/
    pnpm format
    ```
 
-### 2. Testing
+### 2. Testing (to be implemented)
 
 1. **Unit Tests**
 
    ```bash
-   # Run unit tests
-   pnpm test:unit
+   # Run tests with Vitest
+   pnpm test
 
-   # Watch mode
-   pnpm test:unit:watch
-   ```
-
-2. **Integration Tests**
-
-   ```bash
-   # Run integration tests
-   pnpm test:integration
-
-   # With coverage
-   pnpm test:integration:coverage
-   ```
-
-3. **Test Coverage**
-   ```bash
-   # Generate coverage report
-   pnpm test:coverage
+   # Run tests in watch mode
+   pnpm test -- --watch
    ```
 
 ### 3. Documentation
@@ -182,7 +164,7 @@ docs/
     * @typedef {Object} ContainerStats
     * @property {string} containerId - Container ID
     * @property {Object} cpu - CPU statistics
-    * @property {number} cpu.usage - CPU usage percentage
+    * @property {number} cpu.percent - CPU usage percentage
     */
 
    /**
@@ -193,13 +175,6 @@ docs/
    async function processStats(stats) {
      // Implementation
    }
-   ```
-
-2. **Type Exports**
-   ```js
-   /**
-    * @typedef {import('../types').ContainerStats} ContainerStats
-    */
    ```
 
 ## Testing Guidelines
@@ -218,30 +193,6 @@ describe('Stream Manager', () => {
     const stream = await streamManager.addStream('container-1');
     expect(stream).toBeDefined();
     expect(stream.state).toBe('starting');
-  });
-});
-```
-
-### Integration Tests
-
-```js
-describe('Container Monitoring', () => {
-  let docker;
-  let container;
-
-  beforeAll(async () => {
-    docker = new Docker();
-    container = await docker.createContainer({
-      Image: 'nginx',
-      name: 'test-container'
-    });
-  });
-
-  it('should collect container stats', async () => {
-    await container.start();
-    const stats = await collectStats(container.id);
-    expect(stats).toHaveProperty('cpu');
-    expect(stats).toHaveProperty('memory');
   });
 });
 ```
@@ -291,39 +242,9 @@ describe('Container Monitoring', () => {
    - Docker logs
    - InfluxDB queries
 
-## Release Process
-
-### 1. Version Bump
-
-```bash
-# Update version
-pnpm version patch # or minor/major
-
-# Update changelog
-pnpm changelog
-```
-
-### 2. Testing
-
-```bash
-# Run all tests
-pnpm test:all
-
-# Build package
-pnpm build
-```
-
-### 3. Documentation
-
-```bash
-# Generate docs
-pnpm docs:generate
-
-# Review changes
-pnpm docs:serve
-```
-
 ## Further Reading
 
 - [Architecture Overview](../architecture/README.md)
 - [Configuration Guide](../configuration.md)
+- [Metrics Guide](metrics.md)
+- [Stream Management](stream.md)

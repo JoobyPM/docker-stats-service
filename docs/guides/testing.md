@@ -1,220 +1,225 @@
 # `DRAFT` Concept of Testing Strategy
 
-Below is a recommended multi-layer testing strategy that focuses on **deterministic simulation** where possible, and ensures confidence that each component of your Docker Stats Service works correctly. This includes both traditional unit/integration testing and more specialized “simulation” tests that mimic real Docker/container behavior in a controlled way.
+## 1. Architecture Alignment
+
+Refer to the [Architecture Overview](../architecture/README.md), which outlines these components:
+
+1. **Docker Events** → 2. **Container Watcher & Stream Manager** → 3. **Metrics Handler & Batcher** → 4. **InfluxDB**
+
+**Testing** should exercise each layer:
+
+- **Docker Events** & **Container Watcher**: E2E or Integration to confirm we detect container starts/stops and spin up streams.
+- **Stream Manager** & **Stats Parser**: Deterministic Simulation tests can ensure we parse stats under various conditions.
+- **Metrics Handler & Batcher**: Unit and Integration tests to validate our buffering, retries, etc.
+- **InfluxDB**: Integration/E2E to confirm real DB writes.
 
 ---
 
-## 1. Overview of Testing Strategy
+## 2. Revised Testing Layers & Priorities
 
-1. **Unit Tests (Offline, No Docker Required)**
+Below is a recommended multi-layer approach that includes a **basic E2E** early on, plus a separate **Deterministic Simulation** (DST) suite.
 
-   - **Scope:** Smallest testable parts of your code (e.g., batch logic, retry logic, error handling).
-   - **Goal:** Quickly validate correctness of pure JavaScript modules (e.g., `batch.mjs`, `influx.mjs`, `shutdown.mjs`).
+1. **Basic E2E Tests** (High Priority)
 
-2. **Integration Tests (Local Docker or Mocks)**
+   - **Goal**: Quickly verify the entire pipeline (Docker Stats Service + a minimal container + Influx) so devs don’t rely on _manual_ checks.
+   - **Scope**: Spin up a minimal environment (e.g. Docker Stats Service + ephemeral Influx + 1 test container).
+   - **Outcome**: Confirm a container starts, stats are collected, points land in Influx.
+   - **Why First**: Allows immediate confidence in the main flow—no manual steps required to ensure “it basically works.”
 
-   - **Scope:** Interactions between your service and external systems (Docker Daemon, InfluxDB).
-   - **Goal:** Verify the system works end-to-end, but still at a smaller scale than full E2E.
+2. **Unit Tests** (High Priority)
 
-3. **Deterministic Simulation Testing (Mocked Docker Stats)**
+   - **Goal**: Quickly validate pure JS logic (e.g., batch logic, error handling).
+   - **Scope**: Offline tests for modules like `batch.mjs`, `shutdown.mjs`, `influx.mjs`.
+   - **Outcome**: Quick feedback on logic bugs without Docker overhead.
 
-   - **Scope:** Replace actual Docker or stats streams with a **simulated Docker Daemon** (or pre-recorded stats) to produce **repeatable** results.
-   - **Goal:** Test how your service reacts to a variety of edge cases in container stats without the flakiness of real Docker in real-time.
+3. **Integration Tests** (Medium Priority)
 
-4. **End-to-End (E2E) Tests (Ephemeral Containers)**
-   - **Scope:** Spin up the entire stack (InfluxDB, Grafana, Docker Stats Service, plus one or more test containers) and observe real metrics in InfluxDB.
-   - **Goal:** Confirm that the final user flows (from container start → stats collection → Influx → Grafana) function as expected.
+   - **Goal**: Confirm interactions with real Docker or real Influx in a narrower scope.
+   - **Scope**:
+     - **Partial Mocks**: Mock Docker, use real Influx container OR mock Influx, use real Docker.
+     - **Full Integration**: Real Docker + real Influx, but with only a small test container (like `busybox`).
+   - **Outcome**: Validate network calls, config, connection handling.
 
----
+4. **Deterministic Simulation Testing (DST)** (Medium Priority)
 
-## 2. Unit Testing Recommendations
+   - **Goal**: Provide stable, repeatable tests that feed “fake Docker stats” into the system, avoiding real-time metric fluctuations.
+   - **Scope**:
+     - Replace calls to `docker.getContainer(...).stats()` with a “mocked” or “fake” stats server.
+     - Supply pre-recorded or scripted stats frames (e.g., CPU = 150%, missing fields, corrupt JSON).
+   - **Outcome**: Thorough coverage of corner cases, no flakiness from real Docker.
 
-Your codebase has many utility modules (e.g., `batch.mjs`, `influx.mjs`, `shutdown.mjs`). These are prime candidates for **pure unit tests**:
-
-1. **Framework**: Since you have `vitest` in your dev dependencies, you can use Vitest (or Jest, or Mocha) for quick feedback.
-2. **What to test**:
-   - **Batch logic** (`batch.mjs`):
-     - Adding points to the batch
-     - Flushing based on size/time
-     - Retry behavior on write failures
-   - **Retry logic** (`influx.mjs`):
-     - Exponential backoff calculation
-     - Handling “fatal” vs. “retryable” errors
-     - Custom error patterns
-   - **Graceful shutdown** (`shutdown.mjs`):
-     - Execution order of handlers
-     - Timeouts
-     - Multiple registrations
-   - **Error handling**:
-     - Ensure “fatal” errors are thrown/not retried
-     - Ensure “retryable” errors do indeed retry
-
-**Mock external dependencies** (e.g., `influx.writePoints`) using [Vitest mocks](https://vitest.dev/guide/mocking.html), so your tests remain purely in-memory.
+5. **Advanced/Full E2E** (Optional for Every Commit; Good for CI/CD Gate)
+   - **Goal**: Spin up the complete environment (Docker Stats Service, InfluxDB, Grafana, plus multiple test containers).
+   - **Scope**:
+     - Confirm everything from container lifecycle → stats → Influx → Grafana UI.
+   - **Outcome**: Ensures real-world usage is correct, including dashboards.
+   - **Why**: Generally slower; can be run on merges to `main` or nightly.
 
 ---
 
-## 3. Integration Testing with Docker & Influx
+## 3. Detailed Task Breakdown
 
-### 3.1 Lightweight Integration (Partial Mocks)
+### A. **Basic E2E Tests** (Implement First)
 
-- **Goal**: Validate your service’s interaction with either Docker or InfluxDB—one at a time.
-- **Approach**:
-  - **Mock Docker** but run a **real InfluxDB** in Docker.
-    - Use a throwaway InfluxDB container (e.g., via Docker Compose or TestContainers)
-    - Confirm data is successfully written to Influx, verifying real network calls.
-  - **Use real Docker** but mock Influx.
-    - For instance, mock `influx.writePoints()` and confirm that points are prepared correctly.
+1. **Task**: Create a minimal Docker Compose or [TestContainers Node](https://github.com/testcontainers/testcontainers-node) script that launches:
+   - InfluxDB (ephemeral port)
+   - Docker Stats Service (pointed to ephemeral Influx)
+   - A single test container (e.g., Alpine)
+2. **Task**: Wait a short interval, then query Influx for the `docker_stats` measurement.
+3. **Task**: Verify at least one data point was written (CPU, memory, net usage).
+4. **Task**: Tear down.
 
-### 3.2 Full Integration (Local Docker + Local Influx)
-
-- **Goal**: Spin up a real InfluxDB + real Docker environment, but keep the tests “narrow” by only verifying a small number of containers.
-- **Approach**:
-  1. Start InfluxDB in Docker on ephemeral ports (using Docker Compose or TestContainers).
-  2. Start the Docker Stats Service (point it to ephemeral Influx).
-  3. Start a minimal test container (e.g., busybox or Alpine) that runs for a short time.
-  4. Verify the Stats Service writes correct points to Influx.
-
-This ensures the code is actually talking to a Docker daemon, retrieving stats, and writing to Influx—**no mocks**.
+**Why**: This ensures the entire pipeline works after each commit or PR. Developers can skip manual checks.
 
 ---
 
-## 4. Deterministic Simulation Testing (Recommended)
+### B. **Unit Tests**
 
-A frequent problem with “live” Docker metrics is they are **inherently time-based and can fluctuate**. This can cause flakiness in tests. To achieve **deterministic** results:
+1. **`batch.mjs`** (Batch Logic)
 
-1. **Simulated Docker Daemon (Mock Stats Stream)**
+   - Task: Test adding points, flushing by size/time.
+   - Task: Test retry on write failure (mock `influx.writePoints`).
 
-   - **Idea**: Instead of calling `docker.getContainer(id).stats({stream: true})`, you can inject a “fake” or “mocked” stats stream that pushes pre-defined JSON stats frames.
-   - **Implementation**:
-     - Create a small HTTP server or a Node.js stream that **emits JSON lines** exactly how Docker would, but with your chosen data (CPU usage, memory usage, etc.).
-     - In your code, **swap** the real Docker call with an option to connect to this mock stream if `NODE_ENV=test` or via an environment flag.
-     - This approach ensures:
-       - CPU usage or memory usage is the same on each test run.
-       - You can test extreme scenarios (e.g., “unparsable JSON line,” “stats spiking to 200% CPU,” “missing fields,” etc.) in a fully scripted manner.
+2. **`influx.mjs`** (Retry & Error Classification)
 
-2. **Pre-recorded Stats**
+   - Task: Test exponential backoff logic (mock timers or set small delays).
+   - Task: Distinguish fatal vs. retryable errors.
 
-   - If you already have example stats JSON from real Docker sessions, feed them back in a fixed sequence.
-   - This avoids the overhead of an actual Docker daemon but still uses “realistic” data.
+3. **`shutdown.mjs`** (Graceful Shutdown)
 
-3. **Assertion**
-   - Wait for your service to parse all the stats, then check the **batcher’s** internal queue or the final calls to `influx.writePoints`.
-   - Compare the metrics with known expected values. For example, you might expect “CPU usage = 150%,” “Memory usage = 100MB,” etc.
+   - Task: Verify that all handlers run in order, respecting timeouts.
+   - Task: Test multiple registrations, ensuring each runs once.
 
-**Benefits**:
+4. **New or Extended**:
+   - **`STATS_FIELDS`** logic
+     - Task: `ESSENTIAL` → only CPU, memory, network fields.
+     - Task: Custom list → confirm only those fields appear.
+     - Task: Missing fields → confirm log warning.
 
-- Repeatable across CI runs
-- No time-based flakiness
-- Allows negative tests (e.g., corrupt JSON, missing fields) that are hard to produce with real Docker
+**Why**: Quick to run, good coverage of critical logic.
 
 ---
 
-## 5. End-to-End Testing
+### C. **Integration Tests**
 
-Even with deterministic simulations, it is valuable to run the entire stack as a final check. This is typically done in a separate job (or stage) in your CI/CD pipeline:
+1. **Partial Mocks**:
 
-1. **Spin Up**:
-   - `docker compose -f docker/docker-compose.yml up -d` (InfluxDB, Grafana, Docker Stats Service).
-   - Optionally, add your test container(s) in the same `docker-compose.yml` or spawn them after the main services are up.
-2. **Wait** for service readiness:
-   - Wait for InfluxDB’s health check to pass.
-   - Wait for the Stats Service logs to indicate it’s running.
-3. **Assert**:
-   - The Stats Service is indeed writing data to Influx (`SHOW MEASUREMENTS` or query the `docker_stats` measurement).
-   - Optionally, do an **HTTP request** to Grafana’s API (or just check logs) to ensure the dashboard is up.
-4. **Tear down**:
-   - `docker compose -f docker/docker-compose.yml down -v`
+   - **Mock Docker** + Real Influx:
+     - Task: Spin up a real Influx container, mock `docker.getContainer().stats()` calls.
+     - Task: Confirm points in the real DB.
+   - **Real Docker** + Mock Influx:
+     - Task: Actually run Docker containers, but fake `influx.writePoints()` so you can confirm the points structure.
 
-These tests are **slower** and more “real,” so it’s normal to keep them as a final integration gate rather than run them on every commit.
+2. **Full Integration** (Local Docker + Local Influx):
+   - Task: Start ephemeral Influx + Docker Stats Service.
+   - Task: Start a test container (e.g. `busybox -- echo "Hello"`).
+   - Task: Confirm metrics arrived in Influx.
 
----
-
-## 6. Practical Tips & Tooling
-
-1. **Vitest Setup**:
-
-   - Create a `tests/` folder (or `__tests__`) with `.test.mjs` files.
-   - Configure Vitest to pick up these files. Example:
-     ```jsonc
-     // package.json
-     {
-       "scripts": {
-         "test": "vitest run"
-       }
-     }
-     ```
-   - Use inline mocks for Docker or Influx clients for unit tests.
-
-2. **TestContainers / Docker Compose**:
-
-   - **[TestContainers Node](https://github.com/testcontainers/testcontainers-node)** is a popular library that automatically starts/stops containers (like InfluxDB) in your tests, making it easy to do ephemeral integration testing.
-   - Alternatively, you can script your Docker Compose approach with ephemeral ports for CI.
-
-3. **Environment Variables for Testing**:
-
-   - Use distinct DB names or ephemeral ports in test. Example: `INFLUXDB_DB=test_db_123`.
-   - Ensure you don’t accidentally clobber real data in your dev or production InfluxDB.
-
-4. **Mocking the Docker Socket**:
-
-   - For the deterministic simulation tests, you can **avoid mounting the real `/var/run/docker.sock`**. Instead, your code uses a “fake socket” or an environment variable that triggers the fake Docker stream.
-
-5. **Retry + Backoff**:
-   - If your tests rely on waiting for the service to reconnect, be mindful of the added wait times from exponential backoff. In local tests, you can override certain environment variables to make them faster:
-     ```bash
-     INFLUXDB_RETRY_MAX=1   # reduce retries
-     INFLUXDB_RETRY_DELAY=500
-     INFLUXDB_RETRY_MAX_DELAY=1000
-     ```
-   - Alternatively, mock out `withRetry()` so your tests complete quickly.
+**Why**: Verifies real network calls & Docker events in a narrower scope.
 
 ---
 
-## 7. Putting It All Together
+### D. **Deterministic Simulation Testing (DST)**
 
-A **typical** development/CI pipeline might look like this:
+1. **Simulate Docker Stats**:
 
-1. **Lint & Format Check**
+   - Task: Start a Node.js server or local stream that outputs JSON lines matching Docker’s stats format.
+   - Task: Control the data (spikes, missing fields, corrupt JSON, etc.).
 
-   - `pnpm lint`, `pnpm format:check`
+2. **Integration**:
+
+   - Task: If `NODE_ENV=test` or a special env var is set, redirect your stats logic to read from this “fake” endpoint instead of real Docker.
+   - Task: Check that your Batcher receives the exact CPU, memory, etc., and see if it logs parse errors or warnings.
+
+3. **Assertion**:
+   - Task: If you feed “CPU=200%”, ensure that’s what your code tries to write to Influx.
+   - Task: Test partial/corrupt lines to confirm error handling.
+
+**Why**: No real Docker needed, yet you can test all edge conditions _consistently_.
+
+---
+
+### E. **Advanced/Full E2E Tests**
+
+1. **Multi-Container Scenario**:
+
+   - Task: `docker compose -f docker/docker-compose.yml up -d` includes:
+     - Influx, Grafana, Docker Stats Service
+     - Possibly multiple containers (e.g., `nginx`, `redis`)
+   - Task: Wait for logs to confirm stats are flowing.
+
+2. **Assertions**:
+
+   - Task: Query Influx for CPU, memory usage for each container.
+   - Task: Optionally call Grafana’s API or check logs.
+
+3. **Schedule**:
+   - Typically run in a separate CI stage or at least not on every commit (slower).
+   - Possibly run nightly or on merges to `main`.
+
+**Why**: Full real-world coverage (including UI). Possibly more complex to set up, but ensures complete correctness.
+
+---
+
+## 4. Proposed Order of Implementation
+
+1. **Basic E2E**
+
+   - Implement immediately for quick “sanity check.”
+   - This avoids manual overhead for every commit.
 
 2. **Unit Tests**
 
-   - `vitest run` or `pnpm test`
-   - Purely in-memory with mocks. Runs in seconds.
+   - Start building coverage for core logic, especially new features.
 
-3. **Deterministic Simulation Tests**
+3. **Integration Tests**
 
-   - Spin up a minimal “fake Docker daemon” stream or feed pre-canned JSON.
-   - Confirm your service processes CPU/memory stats as expected.
-   - Very stable and repeatable—no real Docker needed.
+   - Real Docker or real Influx, partial or full.
 
+4. **Deterministic Simulation (DST)**
+
+   - Mock Docker Stats for stable coverage of special/edge cases.
+
+5. **Advanced/Full E2E**
+   - As a final gate or nightly job.
+
+---
+
+## 5. Additional Notes & DST Emphasis
+
+- **DST** is extremely valuable if you have frequent changes in how stats are parsed or if real Docker usage is unreliable in CI.
+- For **time-based** fields (like CPU usage deltas), deterministic inputs can drastically reduce flaky test failures.
+- Keep an eye on the existing **architecture** references to ensure your test coverage touches each module (e.g., `Event Monitor`, `Container Watcher`, `Stream Manager`, `Metrics Handler`).
+
+---
+
+## 6. Example CI Flow
+
+1. **Lint & Format**
+   ```bash
+   pnpm lint
+   pnpm format:check
+   ```
+2. **Basic E2E**
+   - Quick ephemeral environment test (ensuring we don’t break the main pipeline).
+3. **Unit Tests**
+   - `pnpm test`
 4. **Integration Tests**
-
-   - Start ephemeral InfluxDB via Docker or TestContainers.
-   - Start the Docker Stats Service in test mode.
-   - Possibly mock Docker or run minimal real Docker to see if metrics are indeed stored in Influx.
-   - Check `docker_stats` measurement for expected points.
-
-5. **E2E Tests** (optional in every commit, mandatory in release branch)
-
-   - `docker compose up` the entire environment (Influx, Grafana, Stats Service, plus test container).
-   - Wait a few seconds for data to appear in Influx.
-   - Query Influx or check logs.
-   - Confirm that everything works as a complete system.
-
-6. **Cleanup**
-   - `docker compose down -v` or let TestContainers handle cleanup automatically.
+   - Possibly spin up ephemeral Docker + Influx, or partial mocking.
+5. **DST**
+   - Feed in pre-defined stats JSON or a simple stream of test data.
+6. **Advanced E2E**
+   - Full `docker compose up` with multiple containers, optional Grafana check.
+7. **Cleanup**
+   - Tear down containers, volumes, etc.
 
 ---
 
-### Final Thoughts
+## 7. Conclusion
 
-- **“Deterministic simulation”** is the most critical piece if you want stable, fast, and repeatable tests for container stats. By injecting your own “stats stream,” you can test edge cases or stable CPU usage flows without real Docker timing noise.
-- Combine that with a final **end-to-end** test in an actual Docker environment for confidence that everything truly works.
-- This layered approach ensures each part of your system (utilities, batching, retry logic, event listening, stats parsing) is covered—both in isolation and in the final integrated environment.
+- **Basic E2E** first for immediate coverage → skip daily manual checks.
+- **Unit & Integration** for thorough logic coverage.
+- **DST** (Deterministic Simulation) for stable corner-case testing.
+- **Advanced E2E** as a final comprehensive step (may be triggered less frequently).
 
----
-
-**Summary**:  
-Adopting a **multi-layer** test strategy (unit, integration, deterministic simulation, E2E) is the best way to ensure high coverage and reliability in a system that interacts with Docker and Influx. This approach balances **confidence** (through real integration) and **speed/determinism** (through mocking/simulation). By isolating Docker stats behind a fake or pre-recorded stream, you can validate all corner cases of your metrics processing code, all while avoiding brittle, real-time Docker dependencies.
+This ensures a well-rounded test strategy aligned with your **architecture** and your need to **avoid manual verification** early in development. By layering **DST** and **basic** vs. **advanced** E2E tests, you achieve both fast feedback and comprehensive coverage.
